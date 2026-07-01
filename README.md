@@ -243,3 +243,12 @@ QgsApplication.qgisSettingsDirPath()
 
 - QGIS Python Plugin 구조: https://docs.qgis.org/testing/en/docs/pyqgis_developer_cookbook/plugins/plugins.html
 - Kakao Maps JavaScript API: https://apis.map.kakao.com/web/documentation/
+
+## License
+
+Kakao QGIS Bridge is licensed under GPL-2.0-or-later.
+
+Kakao Maps and Kakao Mobility APIs are third-party services governed by
+Kakao's terms and policies. Users must provide and manage their own API keys.
+This project does not distribute Kakao map tiles, map data, or API keys, and
+is not affiliated with or endorsed by Kakao Corp.

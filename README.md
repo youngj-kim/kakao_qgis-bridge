@@ -202,8 +202,6 @@ QgsApplication.qgisSettingsDirPath()
 
 ## 날짜별 개발 이력
 
-> 기존 이력은 대화 기록과 QGIS 로그 화면에서 확인 가능한 날짜를 기준으로 정리했습니다.
-
 ### 2026-06-24 - 기본 플러그인 구동
 
 - Plugin Builder 없이 `metadata.txt`, `classFactory`, 메인 플러그인 클래스와 Dock Widget으로 구성된 최소 구조를 작성했습니다.

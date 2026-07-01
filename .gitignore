@@ -1,0 +1,30 @@
+# Local secrets and credentials
+kakao_qgis_bridge/settings.json
+.env
+.env.*
+!.env.example
+
+# Python cache and test artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Build and package output
+build/
+dist/
+*.egg-info/
+*.zip
+
+# Editor and local agent state
+.vscode/
+.idea/
+.agents/
+.codex/
+
+# QGIS and operating-system temporary files
+*.qgs~
+*.qgz~
+Thumbs.db
+.DS_Store

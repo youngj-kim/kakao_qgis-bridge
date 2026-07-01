@@ -1,0 +1,1886 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kakao Map Viewer</title>
+  <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+  <style>
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f7f7f4;
+      color: #1f2428;
+    }
+
+    #viewer {
+      display: grid;
+      grid-template-rows: auto minmax(240px, 1fr) minmax(220px, 0.9fr) auto;
+      height: 100%;
+      position: relative;
+    }
+
+    #search-panel {
+      position: relative;
+      z-index: 20;
+      padding: 7px 8px;
+      border-bottom: 1px solid #d7d7d0;
+      background: #ffffff;
+    }
+
+    #search-form {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto 34px;
+      gap: 6px;
+    }
+
+    #search-query {
+      min-width: 0;
+      height: 34px;
+      padding: 0 9px;
+      border: 1px solid #aeb4b8;
+      border-radius: 6px;
+      background: #ffffff;
+      color: #1f2428;
+      font: inherit;
+      font-size: 13px;
+    }
+
+    #search-query:focus {
+      border-color: #4b77be;
+      outline: 2px solid rgba(75, 119, 190, 0.2);
+      outline-offset: 0;
+    }
+
+    #search-submit,
+    #search-clear {
+      height: 34px;
+      border: 1px solid #90979c;
+      border-radius: 6px;
+      background: #f3f4f4;
+      color: #1f2428;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    #search-submit {
+      min-width: 54px;
+      padding: 0 12px;
+      background: #ffffff;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    #search-clear {
+      width: 34px;
+      padding: 0;
+      font-size: 20px;
+      line-height: 1;
+    }
+
+    #search-submit:hover,
+    #search-clear:hover {
+      background: #e8eaeb;
+    }
+
+    #search-submit:disabled,
+    #search-clear:disabled,
+    #search-query:disabled {
+      cursor: default;
+      opacity: 0.55;
+    }
+
+    #search-results {
+      position: absolute;
+      top: calc(100% - 1px);
+      right: 8px;
+      left: 8px;
+      max-height: min(42vh, 320px);
+      overflow-y: auto;
+      border: 1px solid #aeb4b8;
+      border-radius: 0 0 6px 6px;
+      background: #ffffff;
+      box-shadow: 0 5px 14px rgba(0, 0, 0, 0.16);
+    }
+
+    #search-results[hidden] {
+      display: none;
+    }
+
+    #route-controls {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 6px;
+      margin-top: 6px;
+    }
+
+    .route-label {
+      align-self: center;
+      min-width: 34px;
+      color: #4c555a;
+      font-size: 11px;
+      font-weight: 600;
+      text-align: center;
+    }
+
+    .route-input {
+      min-width: 0;
+      height: 32px;
+      padding: 0 8px;
+      border: 1px solid #aeb4b8;
+      border-radius: 6px;
+      background: #ffffff;
+      color: #1f2428;
+      font: inherit;
+      font-size: 12px;
+    }
+
+    .route-input:focus {
+      border-color: #4b77be;
+      outline: 2px solid rgba(75, 119, 190, 0.2);
+      outline-offset: 0;
+    }
+
+    #route-options,
+    .route-waypoint {
+      display: grid;
+      grid-column: 1 / -1;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 6px;
+    }
+
+    #route-options {
+      grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+    }
+
+    #route-avoid-options {
+      display: flex;
+      grid-column: 1 / -1;
+      flex-wrap: wrap;
+      gap: 4px 12px;
+      padding: 4px 6px 5px 40px;
+      border-bottom: 1px solid #e3e5e6;
+    }
+
+    #route-avoid-options[hidden] {
+      display: none;
+    }
+
+    #route-vehicle-options {
+      display: grid;
+      grid-column: 1 / -1;
+      grid-template-columns: auto minmax(92px, 1fr) auto minmax(76px, 1fr) auto;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 6px 5px 40px;
+      border-bottom: 1px solid #e3e5e6;
+    }
+
+    #route-vehicle-options[hidden] {
+      display: none;
+    }
+
+    .route-vehicle-label {
+      color: #4c555a;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .route-avoid-option {
+      display: inline-flex;
+      min-height: 24px;
+      align-items: center;
+      gap: 5px;
+      color: #3f474c;
+      font-size: 11px;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    .route-avoid-option input {
+      width: 15px;
+      height: 15px;
+      margin: 0;
+      accent-color: #2b5f9e;
+    }
+
+    #route-priority,
+    #route-car-type,
+    #route-car-fuel {
+      min-width: 0;
+      height: 32px;
+      padding: 0 8px;
+      border: 1px solid #aeb4b8;
+      border-radius: 6px;
+      background: #ffffff;
+      color: #1f2428;
+      font: inherit;
+      font-size: 12px;
+    }
+
+    #route-priority:focus,
+    #route-car-type:focus,
+    #route-car-fuel:focus {
+      border-color: #4b77be;
+      outline: 2px solid rgba(75, 119, 190, 0.2);
+      outline-offset: 0;
+    }
+
+    #route-waypoints {
+      display: grid;
+      grid-column: 1 / -1;
+      gap: 6px;
+    }
+
+    .route-waypoint {
+      grid-template-columns: auto minmax(0, 1fr) auto auto 32px;
+    }
+
+    .route-waypoint-order {
+      display: grid;
+      grid-template-columns: 28px 28px;
+      gap: 2px;
+    }
+
+    .route-waypoint-order button {
+      width: 28px;
+      padding: 0 !important;
+      font-size: 16px !important;
+    }
+
+    .route-waypoint-remove {
+      width: 32px;
+      padding: 0 !important;
+      font-size: 18px !important;
+    }
+
+    #route-controls button,
+    #route-actions button {
+      min-width: 0;
+      height: 32px;
+      overflow: hidden;
+      padding: 0 8px;
+      border: 1px solid #aeb4b8;
+      border-radius: 6px;
+      background: #ffffff;
+      color: #1f2428;
+      font: inherit;
+      font-size: 12px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    #route-controls button:hover,
+    #route-actions button:hover {
+      background: #edf2f7;
+    }
+
+    #route-controls button:disabled,
+    #route-actions button:disabled,
+    .route-input:disabled,
+    #route-priority:disabled,
+    #route-car-type:disabled,
+    #route-car-fuel:disabled {
+      cursor: default;
+      opacity: 0.5;
+    }
+
+    #route-actions {
+      display: grid;
+      grid-column: 1 / -1;
+      grid-template-columns: minmax(0, 1fr) 34px 34px;
+      gap: 6px;
+    }
+
+    #route-create {
+      border-color: #2b5f9e !important;
+      background: #2b5f9e !important;
+      color: #ffffff !important;
+    }
+
+    #route-swap,
+    #route-reset {
+      width: 34px;
+      padding: 0 !important;
+      font-size: 18px !important;
+    }
+
+    #route-guidance-panel {
+      margin: 7px -8px -7px;
+      border-top: 1px solid #d7d7d0;
+      background: #ffffff;
+    }
+
+    #route-guidance-panel[hidden] {
+      display: none;
+    }
+
+    #route-guidance-summary {
+      display: flex;
+      min-height: 38px;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 8px 5px 12px;
+      border-bottom: 1px solid #e3e5e6;
+    }
+
+    #route-guidance-summary-text {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      font-size: 12px;
+      font-weight: 600;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #route-guidance-toggle {
+      width: 30px;
+      height: 30px;
+      padding: 0;
+      border: 1px solid #aeb4b8;
+      border-radius: 6px;
+      background: #ffffff;
+      color: #1f2428;
+      font: inherit;
+      font-size: 18px;
+      cursor: pointer;
+    }
+
+    #route-guidance-list {
+      max-height: min(28vh, 260px);
+      overflow-y: auto;
+    }
+
+    #route-guidance-panel[data-collapsed="true"] #route-guidance-list {
+      display: none;
+    }
+
+    .guidance-item {
+      display: grid;
+      width: 100%;
+      min-height: 54px;
+      grid-template-columns: 30px 28px minmax(0, 1fr);
+      align-items: center;
+      gap: 7px;
+      padding: 7px 10px;
+      border: 0;
+      border-bottom: 1px solid #eceeed;
+      background: #ffffff;
+      color: #1f2428;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .guidance-item:hover,
+    .guidance-item:focus,
+    .guidance-item.is-active {
+      background: #edf4fc;
+      outline: none;
+    }
+
+    .guidance-sequence {
+      color: #727a7f;
+      font-size: 11px;
+      text-align: center;
+    }
+
+    .guidance-icon {
+      display: inline-flex;
+      width: 28px;
+      height: 28px;
+      align-items: center;
+      justify-content: center;
+      border: 2px solid #1976d2;
+      border-radius: 50%;
+      color: #185aa8;
+      font-size: 17px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .guidance-icon.start,
+    .guidance-icon.destination,
+    .guidance-icon.waypoint {
+      border: 0;
+      color: #ffffff;
+      font-size: 11px;
+    }
+
+    .guidance-icon.start {
+      background: #2e7d32;
+    }
+
+    .guidance-icon.destination {
+      background: #d32f2f;
+    }
+
+    .guidance-icon.waypoint {
+      background: #f9a825;
+    }
+
+    .guidance-copy {
+      min-width: 0;
+    }
+
+    .guidance-title,
+    .guidance-meta {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .guidance-title {
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .guidance-meta {
+      margin-top: 3px;
+      color: #687176;
+      font-size: 11px;
+    }
+
+    .search-result {
+      display: block;
+      width: 100%;
+      padding: 9px 10px;
+      border: 0;
+      border-bottom: 1px solid #e3e5e6;
+      background: #ffffff;
+      color: #1f2428;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .search-result:last-child {
+      border-bottom: 0;
+    }
+
+    .search-result:hover,
+    .search-result:focus {
+      background: #f2f6fb;
+      outline: none;
+    }
+
+    .search-result-title,
+    .search-result-address {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .search-result-title {
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .search-result-address {
+      margin-top: 3px;
+      color: #626b70;
+      font-size: 11px;
+    }
+
+    .search-empty {
+      padding: 14px 10px;
+      color: #626b70;
+      font-size: 12px;
+      text-align: center;
+    }
+
+    #map,
+    #roadview {
+      min-height: 220px;
+    }
+
+    #status-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 32px;
+      padding: 6px 8px 6px 10px;
+      border-top: 1px solid #d7d7d0;
+      background: #ffffff;
+    }
+
+    #status {
+      flex: 1;
+      min-width: 0;
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    #open-history {
+      flex: 0 0 auto;
+      min-height: 30px;
+      padding: 5px 10px;
+      border: 1px solid #c7a600;
+      border-radius: 6px;
+      background: #fee500;
+      color: #191919;
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    #open-history:hover {
+      background: #f4dc00;
+    }
+
+    #open-history:disabled {
+      cursor: default;
+      opacity: 0.5;
+    }
+
+    @media (max-width: 420px) {
+      #status-bar {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      #open-history {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main id="viewer">
+    <header id="search-panel">
+      <form id="search-form" role="search">
+        <input id="search-query" type="search" aria-label="주소 또는 장소 검색" placeholder="주소 또는 장소 검색" autocomplete="off" disabled>
+        <button id="search-submit" type="submit" disabled>검색</button>
+        <button id="search-clear" type="button" title="검색 지우기" aria-label="검색 지우기" disabled>×</button>
+      </form>
+      <div id="route-controls" aria-label="경로 탐색">
+        <div id="route-options">
+          <label class="route-label" for="route-priority">경로</label>
+          <select id="route-priority" aria-label="경로 유형" disabled>
+            <option value="RECOMMEND">추천 경로</option>
+            <option value="TIME">최단 시간</option>
+            <option value="DISTANCE">최단 거리</option>
+          </select>
+          <button id="route-avoid-toggle" type="button" title="경로 회피 옵션" aria-expanded="false" disabled>회피 0</button>
+          <button id="route-vehicle-toggle" type="button" title="차량 설정" aria-expanded="false" disabled>차량</button>
+          <button id="route-add-waypoint" type="button" title="경유지 추가" disabled>+ 경유지</button>
+        </div>
+        <div id="route-avoid-options" aria-label="경로 회피 옵션" hidden>
+          <label class="route-avoid-option"><input type="checkbox" value="toll">유료도로</label>
+          <label class="route-avoid-option"><input type="checkbox" value="motorway">자동차전용도로</label>
+          <label class="route-avoid-option"><input type="checkbox" value="ferries">페리</label>
+          <label class="route-avoid-option"><input type="checkbox" value="schoolzone">어린이보호구역</label>
+          <label class="route-avoid-option"><input type="checkbox" value="uturn">유턴</label>
+        </div>
+        <div id="route-vehicle-options" aria-label="차량 설정" hidden>
+          <label class="route-vehicle-label" for="route-car-type">차종</label>
+          <select id="route-car-type">
+            <option value="1">소형</option>
+            <option value="2">중형</option>
+            <option value="3">대형</option>
+            <option value="4">대형 화물</option>
+            <option value="5">특수 화물</option>
+            <option value="6">경차</option>
+            <option value="7">이륜차</option>
+          </select>
+          <label class="route-vehicle-label" for="route-car-fuel">유종</label>
+          <select id="route-car-fuel">
+            <option value="GASOLINE">휘발유</option>
+            <option value="DIESEL">경유</option>
+            <option value="LPG">LPG</option>
+          </select>
+          <label class="route-avoid-option"><input id="route-car-hipass" type="checkbox">하이패스</label>
+        </div>
+        <label class="route-label" for="route-origin-input">출발</label>
+        <input id="route-origin-input" class="route-input" type="text" placeholder="주소·장소 또는 경도,위도" autocomplete="off" disabled>
+        <button id="route-origin-current" class="route-current" type="button" title="현재 지도 중심을 출발지로 사용" disabled>현재 위치</button>
+        <div id="route-waypoints" aria-label="경유지 목록"></div>
+        <label class="route-label" for="route-destination-input">도착</label>
+        <input id="route-destination-input" class="route-input" type="text" placeholder="주소·장소 또는 경도,위도" autocomplete="off" disabled>
+        <button id="route-destination-current" class="route-current" type="button" title="현재 지도 중심을 도착지로 사용" disabled>현재 위치</button>
+        <div id="route-actions">
+          <button id="route-create" type="button" disabled>경로 생성</button>
+          <button id="route-swap" type="button" title="출발지와 도착지 바꾸기" aria-label="출발지와 도착지 바꾸기" disabled>⇅</button>
+          <button id="route-reset" type="button" title="경로 입력 초기화" aria-label="경로 입력 초기화" disabled>×</button>
+        </div>
+      </div>
+      <section id="route-guidance-panel" aria-label="경로 안내" data-collapsed="false" hidden>
+        <div id="route-guidance-summary">
+          <strong id="route-guidance-summary-text"></strong>
+          <button id="route-guidance-toggle" type="button" title="경로 안내 접기" aria-label="경로 안내 접기">−</button>
+        </div>
+        <div id="route-guidance-list" role="listbox" aria-label="순서별 경로 안내"></div>
+      </section>
+      <div id="search-results" role="listbox" aria-label="검색 결과" hidden></div>
+    </header>
+    <section id="map" aria-label="Kakao map"></section>
+    <section id="roadview" aria-label="Kakao roadview"></section>
+    <footer id="status-bar">
+      <output id="status">Initializing Kakao Map viewer...</output>
+      <button id="open-history" type="button" disabled>카카오맵에서 과거 촬영 선택</button>
+    </footer>
+  </main>
+
+  <script>
+    const kakaoAppKey = __KAKAO_APP_KEY_JSON__;
+    const defaultCenter = { lat: 37.566826, lon: 126.9786567 };
+    const searchForm = document.getElementById("search-form");
+    const searchQuery = document.getElementById("search-query");
+    const searchSubmit = document.getElementById("search-submit");
+    const searchClear = document.getElementById("search-clear");
+    const searchResults = document.getElementById("search-results");
+    const routeOriginInput = document.getElementById("route-origin-input");
+    const routeDestinationInput = document.getElementById("route-destination-input");
+    const routeOriginCurrentButton = document.getElementById("route-origin-current");
+    const routeDestinationCurrentButton = document.getElementById("route-destination-current");
+    const routePrioritySelect = document.getElementById("route-priority");
+    const routeAvoidToggle = document.getElementById("route-avoid-toggle");
+    const routeAvoidOptions = document.getElementById("route-avoid-options");
+    const routeAvoidCheckboxes = Array.from(
+      routeAvoidOptions.querySelectorAll('input[type="checkbox"]')
+    );
+    const routeVehicleToggle = document.getElementById("route-vehicle-toggle");
+    const routeVehicleOptions = document.getElementById("route-vehicle-options");
+    const routeCarType = document.getElementById("route-car-type");
+    const routeCarFuel = document.getElementById("route-car-fuel");
+    const routeCarHipass = document.getElementById("route-car-hipass");
+    const routeAddWaypointButton = document.getElementById("route-add-waypoint");
+    const routeWaypointsContainer = document.getElementById("route-waypoints");
+    const routeCreateButton = document.getElementById("route-create");
+    const routeSwapButton = document.getElementById("route-swap");
+    const routeResetButton = document.getElementById("route-reset");
+    const routeGuidancePanel = document.getElementById("route-guidance-panel");
+    const routeGuidanceSummaryText = document.getElementById("route-guidance-summary-text");
+    const routeGuidanceToggle = document.getElementById("route-guidance-toggle");
+    const routeGuidanceList = document.getElementById("route-guidance-list");
+    const maxRouteWaypoints = 5;
+
+    let map = null;
+    let marker = null;
+    let roadview = null;
+    let roadviewClient = null;
+    let placesService = null;
+    let geocoderService = null;
+    let pendingCenter = null;
+    let moveRequestId = 0;
+    let searchRequestId = 0;
+    let routeOrigin = null;
+    let routeDestination = null;
+    const routeWaypoints = [];
+    let nextWaypointId = 1;
+    let routeBusy = false;
+    let routeSearchTimer = null;
+    let routeGuidance = [];
+    let activeGuidanceSequence = null;
+    let qgisBridge = null;
+    let mapSyncTimer = null;
+    let roadviewSyncTimer = null;
+    let roadviewStateTimer = null;
+    let programmaticRoadviewPanoId = null;
+
+    function setStatus(message) {
+      document.getElementById("status").textContent = message;
+    }
+
+    function formatGuidanceDistance(distance) {
+      if (!Number.isFinite(distance) || distance <= 0) {
+        return "";
+      }
+      if (distance < 1000) {
+        return `${Math.round(distance)} m`;
+      }
+      return `${(distance / 1000).toFixed(1)} km`;
+    }
+
+    function formatGuidanceDuration(duration) {
+      if (!Number.isFinite(duration) || duration <= 0) {
+        return "";
+      }
+      if (duration < 60) {
+        return `${Math.round(duration)}초`;
+      }
+      return `${Math.max(1, Math.round(duration / 60))}분`;
+    }
+
+    function selectedRouteAvoidOptions() {
+      return routeAvoidCheckboxes
+        .filter((checkbox) => checkbox.checked)
+        .map((checkbox) => checkbox.value);
+    }
+
+    function updateRouteAvoidSummary() {
+      const selected = routeAvoidCheckboxes.filter((checkbox) => checkbox.checked);
+      routeAvoidToggle.textContent = `회피 ${selected.length}`;
+      const labels = selected.map((checkbox) => checkbox.parentElement.textContent.trim());
+      routeAvoidToggle.title = labels.length
+        ? `경로 회피: ${labels.join(", ")}`
+        : "경로 회피 옵션";
+    }
+
+    function selectedRouteVehicleOptions() {
+      return {
+        car_type: Number(routeCarType.value),
+        car_fuel: routeCarFuel.value,
+        car_hipass: routeCarHipass.checked
+      };
+    }
+
+    function updateRouteVehicleSummary() {
+      const typeLabel = routeCarType.options[routeCarType.selectedIndex].text;
+      const fuelLabel = routeCarFuel.options[routeCarFuel.selectedIndex].text;
+      const hipassLabel = routeCarHipass.checked ? ", 하이패스" : "";
+      routeVehicleToggle.title = `차량: ${typeLabel}, ${fuelLabel}${hipassLabel}`;
+    }
+
+    function guidanceIconText(category) {
+      const icons = {
+        start: "출",
+        destination: "도",
+        waypoint: "경",
+        straight: "↑",
+        left: "↰",
+        right: "↱",
+        uturn: "↶",
+        roundabout: "⟳",
+        transition: "↗",
+        other: "•"
+      };
+      return icons[category] || icons.other;
+    }
+
+    function selectRouteGuidance(guide, item) {
+      activeGuidanceSequence = guide.sequence;
+      routeGuidanceList.querySelectorAll(".guidance-item").forEach((candidate) => {
+        candidate.classList.toggle("is-active", candidate === item);
+      });
+
+      moveViewer(guide.longitude, guide.latitude);
+      if (qgisBridge) {
+        qgisBridge.selectRouteGuidance(
+          guide.sequence,
+          guide.longitude,
+          guide.latitude
+        );
+      }
+      setStatus(`${guide.sequence}. ${guide.guidance}`);
+    }
+
+    function renderRouteGuidance(payload) {
+      const guides = Array.isArray(payload.guides) ? payload.guides : [];
+      routeGuidance = guides;
+      activeGuidanceSequence = null;
+      routeGuidanceList.textContent = "";
+
+      if (!guides.length) {
+        routeGuidancePanel.hidden = true;
+        return;
+      }
+
+      const summary = payload.summary || {};
+      const vehicle = summary.vehicle || {};
+      const vehicleTypeLabels = {
+        1: "소형",
+        2: "중형",
+        3: "대형",
+        4: "대형 화물",
+        5: "특수 화물",
+        6: "경차",
+        7: "이륜차"
+      };
+      const summaryParts = [
+        formatGuidanceDuration(Number(summary.duration_s)),
+        formatGuidanceDistance(Number(summary.distance_m)),
+        Array.isArray(summary.avoid) && summary.avoid.length
+          ? `회피 ${summary.avoid.length}`
+          : "",
+        vehicleTypeLabels[vehicle.car_type] || "",
+        `안내 ${guides.length}개`
+      ].filter(Boolean);
+      routeGuidanceSummaryText.textContent = summaryParts.join(" · ");
+      routeGuidancePanel.dataset.collapsed = "false";
+      routeGuidanceToggle.textContent = "−";
+      routeGuidanceToggle.title = "경로 안내 접기";
+      routeGuidanceToggle.setAttribute("aria-label", "경로 안내 접기");
+
+      guides.forEach((guide) => {
+        const item = document.createElement("button");
+        item.type = "button";
+        item.className = "guidance-item";
+        item.setAttribute("role", "option");
+
+        const sequence = document.createElement("span");
+        sequence.className = "guidance-sequence";
+        sequence.textContent = String(guide.sequence);
+
+        const icon = document.createElement("span");
+        icon.className = `guidance-icon ${guide.category || "other"}`;
+        icon.textContent = guidanceIconText(guide.category);
+        icon.setAttribute("aria-hidden", "true");
+
+        const copy = document.createElement("span");
+        copy.className = "guidance-copy";
+
+        const title = document.createElement("span");
+        title.className = "guidance-title";
+        title.textContent = guide.guidance || guide.name || "경로 안내";
+
+        const meta = document.createElement("span");
+        meta.className = "guidance-meta";
+        const metaParts = [
+          formatGuidanceDistance(Number(guide.distance_m)),
+          formatGuidanceDuration(Number(guide.duration_s))
+        ].filter(Boolean);
+        meta.textContent = metaParts.length ? metaParts.join(" · ") : "현재 위치";
+
+        copy.append(title, meta);
+        item.append(sequence, icon, copy);
+        item.addEventListener("click", () => selectRouteGuidance(guide, item));
+        routeGuidanceList.appendChild(item);
+      });
+
+      routeGuidancePanel.hidden = false;
+    }
+
+    function initQgisBridge() {
+      if (!window.qt || !window.qt.webChannelTransport || !window.QWebChannel) {
+        return;
+      }
+
+      new QWebChannel(window.qt.webChannelTransport, (channel) => {
+        qgisBridge = channel.objects.qgisBridge;
+        qgisBridge.routeStatusChanged.connect((success, message) => {
+          routeBusy = false;
+          updateRouteControls();
+          setStatus(message);
+        });
+        qgisBridge.routeGuidanceChanged.connect((payloadJson) => {
+          try {
+            renderRouteGuidance(JSON.parse(payloadJson));
+          } catch (error) {
+            routeGuidancePanel.hidden = true;
+            setStatus("경로 안내 목록을 표시하지 못했습니다.");
+          }
+        });
+      });
+    }
+
+    function currentMapCoordinate() {
+      if (!map) {
+        return null;
+      }
+      const center = map.getCenter();
+      return {
+        lon: center.getLng(),
+        lat: center.getLat()
+      };
+    }
+
+    function parseCoordinateInput(value) {
+      const separator = value.includes(",") ? /\s*,\s*/ : /\s+/;
+      const parts = value.trim().split(separator);
+      if (parts.length !== 2 || parts.some((part) => !part)) {
+        return null;
+      }
+
+      const first = Number(parts[0]);
+      const second = Number(parts[1]);
+      if (!Number.isFinite(first) || !Number.isFinite(second)) {
+        return null;
+      }
+
+      let lon = first;
+      let lat = second;
+      if (Math.abs(second) > 90 && Math.abs(first) <= 90) {
+        lon = second;
+        lat = first;
+      }
+
+      if (Math.abs(lon) > 180 || Math.abs(lat) > 90) {
+        return null;
+      }
+      return { lon, lat };
+    }
+
+    function formatCoordinate(coordinate) {
+      return `${coordinate.lon.toFixed(7)}, ${coordinate.lat.toFixed(7)}`;
+    }
+
+    function resolveRouteLocation(value) {
+      const query = value.trim();
+      const coordinate = parseCoordinateInput(query);
+      if (coordinate) {
+        return Promise.resolve(coordinate);
+      }
+      if (!query || !placesService || !geocoderService) {
+        return Promise.reject(new Error("입력값을 좌표나 장소로 해석할 수 없습니다."));
+      }
+
+      return new Promise((resolve, reject) => {
+        const addressResults = [];
+        const placeResults = [];
+        let remaining = 2;
+
+        const finish = () => {
+          remaining -= 1;
+          if (remaining > 0) {
+            return;
+          }
+
+          const result = addressResults[0] || placeResults[0];
+          if (!result) {
+            reject(new Error(`위치를 찾지 못했습니다: ${query}`));
+            return;
+          }
+          resolve(result);
+        };
+
+        geocoderService.addressSearch(query, (data, status) => {
+          if (status === kakao.maps.services.Status.OK) {
+            data.forEach((item) => {
+              addressResults.push({ lon: Number(item.x), lat: Number(item.y) });
+            });
+          }
+          finish();
+        });
+
+        placesService.keywordSearch(query, (data, status) => {
+          if (status === kakao.maps.services.Status.OK) {
+            data.forEach((item) => {
+              placeResults.push({ lon: Number(item.x), lat: Number(item.y) });
+            });
+          }
+          finish();
+        });
+      });
+    }
+
+    function updateRouteControls() {
+      const hasOrigin = Boolean(routeOriginInput.value.trim());
+      const hasDestination = Boolean(routeDestinationInput.value.trim());
+      const waypointsReady = routeWaypoints.every((waypoint) => waypoint.input.value.trim());
+      routeCreateButton.disabled = routeBusy || !(hasOrigin && hasDestination && waypointsReady);
+      routeResetButton.disabled = routeBusy || !(hasOrigin || hasDestination || routeWaypoints.length);
+      routeSwapButton.disabled = !map || routeBusy || !(hasOrigin || hasDestination);
+      routePrioritySelect.disabled = !map || routeBusy;
+      routeAvoidToggle.disabled = !map || routeBusy;
+      routeAvoidCheckboxes.forEach((checkbox) => {
+        checkbox.disabled = !map || routeBusy;
+      });
+      routeVehicleToggle.disabled = !map || routeBusy;
+      routeCarType.disabled = !map || routeBusy;
+      routeCarFuel.disabled = !map || routeBusy;
+      routeCarHipass.disabled = !map || routeBusy;
+      routeAddWaypointButton.disabled = !map || routeBusy || routeWaypoints.length >= maxRouteWaypoints;
+      routeOriginInput.disabled = !map || routeBusy;
+      routeDestinationInput.disabled = !map || routeBusy;
+      routeOriginCurrentButton.disabled = !map || routeBusy;
+      routeDestinationCurrentButton.disabled = !map || routeBusy;
+      routeWaypoints.forEach((waypoint, index) => {
+        waypoint.input.disabled = !map || routeBusy;
+        waypoint.currentButton.disabled = !map || routeBusy;
+        waypoint.removeButton.disabled = routeBusy;
+        waypoint.upButton.disabled = routeBusy || index === 0;
+        waypoint.downButton.disabled = routeBusy || index === routeWaypoints.length - 1;
+      });
+    }
+
+    function publishRoutePoint(role, coordinate) {
+      if (qgisBridge && coordinate) {
+        qgisBridge.setRoutePoint(role, coordinate.lon, coordinate.lat);
+      }
+    }
+
+    function applyRouteSearchResult(
+      input,
+      pointId,
+      label,
+      coordinate,
+      displayValue,
+      onResolved
+    ) {
+      input.value = displayValue || formatCoordinate(coordinate);
+      onResolved(coordinate);
+      publishRoutePoint(pointId, coordinate);
+      searchResults.hidden = true;
+
+      if (map) {
+        map.setLevel(4);
+        moveViewer(coordinate.lon, coordinate.lat);
+      }
+      if (qgisBridge) {
+        qgisBridge.moveQgisCenter(coordinate.lon, coordinate.lat);
+      }
+      setStatus(
+        `${label} 지정: ${coordinate.lat.toFixed(6)}, ${coordinate.lon.toFixed(6)}`
+      );
+      updateRouteControls();
+    }
+
+    function searchRouteInput(
+      input,
+      pointIdProvider,
+      labelProvider,
+      onResolved,
+      selectFirst = false
+    ) {
+      const query = input.value.trim();
+      if (!query) {
+        return;
+      }
+
+      const pointId = pointIdProvider();
+      const label = labelProvider();
+      const coordinate = parseCoordinateInput(query);
+      if (coordinate) {
+        applyRouteSearchResult(
+          input,
+          pointId,
+          label,
+          coordinate,
+          formatCoordinate(coordinate),
+          onResolved
+        );
+        return;
+      }
+
+      searchLocal(
+        query,
+        (result) => {
+          applyRouteSearchResult(
+            input,
+            pointId,
+            label,
+            { lon: result.lon, lat: result.lat },
+            result.title || result.address,
+            onResolved
+          );
+        },
+        false,
+        selectFirst
+      );
+    }
+
+    function bindRouteInput(input, pointIdProvider, labelProvider, onResolved) {
+      input.addEventListener("input", () => {
+        onResolved(null);
+        searchRequestId += 1;
+        searchResults.hidden = true;
+        if (qgisBridge) {
+          qgisBridge.clearRoutePoint(pointIdProvider());
+        }
+        updateRouteControls();
+
+        window.clearTimeout(routeSearchTimer);
+        if (!input.value.trim()) {
+          return;
+        }
+        routeSearchTimer = window.setTimeout(() => {
+          searchRouteInput(input, pointIdProvider, labelProvider, onResolved);
+        }, 500);
+      });
+
+      input.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter") {
+          return;
+        }
+        event.preventDefault();
+        window.clearTimeout(routeSearchTimer);
+        searchRouteInput(
+          input,
+          pointIdProvider,
+          labelProvider,
+          onResolved,
+          true
+        );
+      });
+    }
+
+    function waypointPointId(waypoint) {
+      return `waypoint:${waypoint.id}`;
+    }
+
+    function updateWaypointLabels() {
+      routeWaypoints.forEach((waypoint, index) => {
+        waypoint.label.textContent = `경유 ${index + 1}`;
+        waypoint.input.setAttribute("aria-label", `경유지 ${index + 1}`);
+        waypoint.currentButton.title = `현재 지도 중심을 경유지 ${index + 1}로 사용`;
+        waypoint.removeButton.title = `경유지 ${index + 1} 삭제`;
+        waypoint.removeButton.setAttribute("aria-label", `경유지 ${index + 1} 삭제`);
+        waypoint.upButton.title = `경유지 ${index + 1} 위로 이동`;
+        waypoint.upButton.setAttribute("aria-label", `경유지 ${index + 1} 위로 이동`);
+        waypoint.downButton.title = `경유지 ${index + 1} 아래로 이동`;
+        waypoint.downButton.setAttribute("aria-label", `경유지 ${index + 1} 아래로 이동`);
+      });
+    }
+
+    function moveWaypoint(waypoint, offset) {
+      const index = routeWaypoints.indexOf(waypoint);
+      const targetIndex = index + offset;
+      if (index < 0 || targetIndex < 0 || targetIndex >= routeWaypoints.length) {
+        return;
+      }
+
+      window.clearTimeout(routeSearchTimer);
+      searchRequestId += 1;
+      searchResults.hidden = true;
+      routeWaypoints.splice(index, 1);
+      routeWaypoints.splice(targetIndex, 0, waypoint);
+      routeWaypointsContainer.replaceChildren(
+        ...routeWaypoints.map((candidate) => candidate.row)
+      );
+      updateWaypointLabels();
+      updateRouteControls();
+      setStatus(`경유지 ${targetIndex + 1} 순서로 이동했습니다.`);
+    }
+
+    function swapRouteEndpoints() {
+      window.clearTimeout(routeSearchTimer);
+      searchRequestId += 1;
+      searchResults.hidden = true;
+
+      const originValue = routeOriginInput.value;
+      routeOriginInput.value = routeDestinationInput.value;
+      routeDestinationInput.value = originValue;
+      [routeOrigin, routeDestination] = [routeDestination, routeOrigin];
+
+      if (qgisBridge) {
+        qgisBridge.clearRoutePoint("origin");
+        qgisBridge.clearRoutePoint("destination");
+        publishRoutePoint("origin", routeOrigin);
+        publishRoutePoint("destination", routeDestination);
+      }
+      updateRouteControls();
+      setStatus("출발지와 도착지를 바꿨습니다.");
+    }
+
+    function removeWaypoint(waypoint) {
+      const index = routeWaypoints.indexOf(waypoint);
+      if (index < 0) {
+        return;
+      }
+      window.clearTimeout(routeSearchTimer);
+      searchRequestId += 1;
+      searchResults.hidden = true;
+      if (qgisBridge) {
+        qgisBridge.clearRoutePoint(waypointPointId(waypoint));
+      }
+      routeWaypoints.splice(index, 1);
+      waypoint.row.remove();
+      updateWaypointLabels();
+      updateRouteControls();
+      setStatus("경유지를 삭제했습니다.");
+    }
+
+    function addWaypoint() {
+      if (routeWaypoints.length >= maxRouteWaypoints) {
+        setStatus(`경유지는 최대 ${maxRouteWaypoints}개까지 추가할 수 있습니다.`);
+        return;
+      }
+
+      const row = document.createElement("div");
+      row.className = "route-waypoint";
+
+      const label = document.createElement("span");
+      label.className = "route-label";
+
+      const input = document.createElement("input");
+      input.className = "route-input";
+      input.type = "text";
+      input.placeholder = "주소·장소 또는 경도,위도";
+      input.autocomplete = "off";
+
+      const currentButton = document.createElement("button");
+      currentButton.className = "route-current";
+      currentButton.type = "button";
+      currentButton.textContent = "현재 위치";
+
+      const removeButton = document.createElement("button");
+      removeButton.className = "route-waypoint-remove";
+      removeButton.type = "button";
+      removeButton.textContent = "×";
+
+      const orderContainer = document.createElement("span");
+      orderContainer.className = "route-waypoint-order";
+
+      const upButton = document.createElement("button");
+      upButton.type = "button";
+      upButton.textContent = "↑";
+
+      const downButton = document.createElement("button");
+      downButton.type = "button";
+      downButton.textContent = "↓";
+
+      const waypoint = {
+        id: nextWaypointId++,
+        coordinate: null,
+        row,
+        label,
+        input,
+        currentButton,
+        removeButton,
+        upButton,
+        downButton
+      };
+
+      bindRouteInput(
+        input,
+        () => waypointPointId(waypoint),
+        () => `경유지 ${routeWaypoints.indexOf(waypoint) + 1}`,
+        (coordinate) => {
+          waypoint.coordinate = coordinate;
+        }
+      );
+
+      currentButton.addEventListener("click", () => {
+        window.clearTimeout(routeSearchTimer);
+        searchRequestId += 1;
+        searchResults.hidden = true;
+        waypoint.coordinate = currentMapCoordinate();
+        if (waypoint.coordinate) {
+          input.value = formatCoordinate(waypoint.coordinate);
+          publishRoutePoint(waypointPointId(waypoint), waypoint.coordinate);
+          const index = routeWaypoints.indexOf(waypoint) + 1;
+          setStatus(
+            `경유지 ${index}: ${waypoint.coordinate.lat.toFixed(6)}, ` +
+            waypoint.coordinate.lon.toFixed(6)
+          );
+        }
+        updateRouteControls();
+      });
+
+      removeButton.addEventListener("click", () => removeWaypoint(waypoint));
+      upButton.addEventListener("click", () => moveWaypoint(waypoint, -1));
+      downButton.addEventListener("click", () => moveWaypoint(waypoint, 1));
+      orderContainer.append(upButton, downButton);
+
+      row.append(label, input, currentButton, orderContainer, removeButton);
+      routeWaypoints.push(waypoint);
+      routeWaypointsContainer.appendChild(row);
+      updateWaypointLabels();
+      updateRouteControls();
+      input.focus();
+      setStatus(`${routeWaypoints.length}번째 경유지를 추가했습니다.`);
+    }
+
+    function syncKakaoMapToQgis() {
+      const position = map.getCenter();
+      const lat = position.getLat();
+      const lon = position.getLng();
+      marker.setPosition(position);
+
+      if (!qgisBridge) {
+        setStatus("Kakao Map moved, but the QGIS bridge is not ready.");
+        return;
+      }
+
+      qgisBridge.moveQgisCenter(lon, lat);
+      setStatus(`Kakao Map -> QGIS EPSG:4326 ${lat.toFixed(6)}, ${lon.toFixed(6)}.`);
+    }
+
+    function scheduleKakaoMapSync() {
+      if (mapSyncTimer !== null) {
+        return;
+      }
+
+      mapSyncTimer = window.setTimeout(() => {
+        mapSyncTimer = null;
+        syncKakaoMapToQgis();
+      }, 120);
+    }
+
+    function syncRoadviewStateToQgis() {
+      if (!qgisBridge || !roadview) {
+        return;
+      }
+
+      const position = roadview.getPosition();
+      const viewpoint = roadview.getViewpoint();
+      if (!position || !viewpoint) {
+        return;
+      }
+
+      const lon = position.getLng();
+      const lat = position.getLat();
+      const pan = Number(viewpoint.pan);
+      const tilt = Number(viewpoint.tilt);
+      const zoom = Number(viewpoint.zoom);
+      if (![lon, lat, pan, tilt, zoom].every(Number.isFinite)) {
+        return;
+      }
+
+      const panoId = roadview.getPanoId();
+      qgisBridge.updateRoadviewState(
+        lon,
+        lat,
+        pan,
+        tilt,
+        zoom,
+        panoId === null || panoId === undefined ? "" : String(panoId)
+      );
+    }
+
+    function scheduleRoadviewStateSync() {
+      if (roadviewStateTimer !== null) {
+        return;
+      }
+
+      roadviewStateTimer = window.setTimeout(() => {
+        roadviewStateTimer = null;
+        syncRoadviewStateToQgis();
+      }, 100);
+    }
+
+    function normalizePlaceResult(place) {
+      return {
+        title: place.place_name || place.address_name || "검색 결과",
+        address: place.road_address_name || place.address_name || "",
+        lon: Number(place.x),
+        lat: Number(place.y)
+      };
+    }
+
+    function normalizeAddressResult(address) {
+      const detail = address.road_address && address.road_address.address_name
+        ? address.road_address.address_name
+        : address.address && address.address.address_name
+          ? address.address.address_name
+          : "주소 검색 결과";
+
+      return {
+        title: address.address_name || detail,
+        address: detail,
+        lon: Number(address.x),
+        lat: Number(address.y)
+      };
+    }
+
+    function selectSearchResult(result) {
+      map.setLevel(4);
+      moveViewer(result.lon, result.lat);
+      searchResults.hidden = true;
+
+      if (qgisBridge) {
+        qgisBridge.moveQgisCenter(result.lon, result.lat);
+      }
+      setStatus(`Search -> QGIS EPSG:4326 ${result.lat.toFixed(6)}, ${result.lon.toFixed(6)}.`);
+    }
+
+    function renderSearchResults(results, onSelect = selectSearchResult) {
+      searchResults.textContent = "";
+
+      if (!results.length) {
+        const empty = document.createElement("div");
+        empty.className = "search-empty";
+        empty.textContent = "검색 결과가 없습니다.";
+        searchResults.appendChild(empty);
+        searchResults.hidden = false;
+        return;
+      }
+
+      results.slice(0, 20).forEach((result) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "search-result";
+        button.setAttribute("role", "option");
+
+        const title = document.createElement("span");
+        title.className = "search-result-title";
+        title.textContent = result.title;
+
+        const address = document.createElement("span");
+        address.className = "search-result-address";
+        address.textContent = result.address;
+
+        button.appendChild(title);
+        button.appendChild(address);
+        button.addEventListener("click", () => onSelect(result));
+        searchResults.appendChild(button);
+      });
+
+      searchResults.hidden = false;
+    }
+
+    function searchLocal(
+      query,
+      onSelect = selectSearchResult,
+      manageSearchButton = true,
+      selectFirst = false
+    ) {
+      if (!placesService || !geocoderService) {
+        setStatus("Kakao Local search is not ready.");
+        return;
+      }
+
+      const requestId = ++searchRequestId;
+      const collected = [];
+      let remaining = 2;
+      let failed = false;
+
+      if (manageSearchButton) {
+        searchSubmit.disabled = true;
+      }
+      setStatus(`Searching Kakao Local: ${query}`);
+
+      const finish = () => {
+        if (requestId !== searchRequestId) {
+          return;
+        }
+
+        remaining -= 1;
+        if (remaining > 0) {
+          return;
+        }
+
+        const unique = new Map();
+        collected.forEach((result) => {
+          if (!Number.isFinite(result.lon) || !Number.isFinite(result.lat)) {
+            return;
+          }
+          const key = `${result.lon.toFixed(7)},${result.lat.toFixed(7)},${result.title}`;
+          if (!unique.has(key)) {
+            unique.set(key, result);
+          }
+        });
+
+        const results = Array.from(unique.values());
+        if (selectFirst && results.length) {
+          searchResults.hidden = true;
+          if (manageSearchButton) {
+            searchSubmit.disabled = false;
+          }
+          onSelect(results[0]);
+          return;
+        }
+        renderSearchResults(results, onSelect);
+        if (manageSearchButton) {
+          searchSubmit.disabled = false;
+        }
+        setStatus(failed && !results.length
+          ? "Kakao Local search failed."
+          : `Kakao Local search results: ${results.length}`);
+      };
+
+      placesService.keywordSearch(query, (data, status) => {
+        if (requestId !== searchRequestId) {
+          return;
+        }
+        if (status === kakao.maps.services.Status.OK) {
+          data.forEach((place) => collected.push(normalizePlaceResult(place)));
+        } else if (status === kakao.maps.services.Status.ERROR) {
+          failed = true;
+        }
+        finish();
+      });
+
+      geocoderService.addressSearch(query, (data, status) => {
+        if (requestId !== searchRequestId) {
+          return;
+        }
+        if (status === kakao.maps.services.Status.OK) {
+          data.forEach((address) => collected.push(normalizeAddressResult(address)));
+        } else if (status === kakao.maps.services.Status.ERROR) {
+          failed = true;
+        }
+        finish();
+      });
+    }
+
+    function loadKakaoScript(appKey) {
+      return new Promise((resolve, reject) => {
+        if (window.kakao && window.kakao.maps) {
+          window.kakao.maps.load(resolve);
+          return;
+        }
+
+        const script = document.createElement("script");
+        script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(appKey)}&autoload=false&libraries=services`;
+        script.async = true;
+        script.onload = () => window.kakao.maps.load(resolve);
+        script.onerror = () => reject(new Error("Failed to load Kakao Maps JavaScript API."));
+        document.head.appendChild(script);
+      });
+    }
+
+    function initViewer() {
+      const center = new kakao.maps.LatLng(defaultCenter.lat, defaultCenter.lon);
+
+      map = new kakao.maps.Map(document.getElementById("map"), {
+        center,
+        level: 4
+      });
+
+      marker = new kakao.maps.Marker({
+        map,
+        position: center
+      });
+
+      kakao.maps.event.addListener(map, "drag", () => {
+        scheduleKakaoMapSync();
+      });
+
+      kakao.maps.event.addListener(map, "dragend", () => {
+        window.clearTimeout(mapSyncTimer);
+        mapSyncTimer = null;
+        syncKakaoMapToQgis();
+      });
+
+      kakao.maps.event.addListener(map, "click", () => {
+        searchResults.hidden = true;
+      });
+
+      roadview = new kakao.maps.Roadview(document.getElementById("roadview"));
+      roadviewClient = new kakao.maps.RoadviewClient();
+      placesService = new kakao.maps.services.Places();
+      geocoderService = new kakao.maps.services.Geocoder();
+      searchQuery.disabled = false;
+      searchSubmit.disabled = false;
+      routeOriginInput.disabled = false;
+      routeDestinationInput.disabled = false;
+      routeOriginCurrentButton.disabled = false;
+      routeDestinationCurrentButton.disabled = false;
+      routePrioritySelect.disabled = false;
+      routeAddWaypointButton.disabled = false;
+      updateRouteControls();
+      document.getElementById("open-history").disabled = false;
+
+      kakao.maps.event.addListener(roadview, "position_changed", () => {
+        scheduleRoadviewStateSync();
+
+        const panoId = roadview.getPanoId();
+        if (programmaticRoadviewPanoId === panoId) {
+          programmaticRoadviewPanoId = null;
+          return;
+        }
+        programmaticRoadviewPanoId = null;
+
+        const position = roadview.getPosition();
+        if (!position) {
+          return;
+        }
+
+        const lat = position.getLat();
+        const lon = position.getLng();
+        map.setCenter(position);
+        marker.setPosition(position);
+
+        window.clearTimeout(roadviewSyncTimer);
+        roadviewSyncTimer = window.setTimeout(() => {
+          if (!qgisBridge) {
+            setStatus("Roadview moved, but the QGIS bridge is not ready.");
+            return;
+          }
+
+          qgisBridge.moveQgisCenter(lon, lat);
+          setStatus(`Roadview -> QGIS EPSG:4326 ${lat.toFixed(6)}, ${lon.toFixed(6)}.`);
+        }, 200);
+      });
+
+      kakao.maps.event.addListener(roadview, "viewpoint_changed", () => {
+        scheduleRoadviewStateSync();
+      });
+
+      kakao.maps.event.addListener(roadview, "panoid_changed", () => {
+        scheduleRoadviewStateSync();
+      });
+
+      kakao.maps.event.addListener(roadview, "init", () => {
+        scheduleRoadviewStateSync();
+      });
+
+      setStatus("Ready. QGIS, Kakao Map, and Roadview position sync is active.");
+      moveViewer(defaultCenter.lon, defaultCenter.lat);
+
+      if (pendingCenter) {
+        moveViewer(pendingCenter.lon, pendingCenter.lat);
+        pendingCenter = null;
+      }
+    }
+
+    document.getElementById("open-history").addEventListener("click", () => {
+      const position = roadview && roadview.getPosition()
+        ? roadview.getPosition()
+        : map && map.getCenter();
+      if (!position || !qgisBridge) {
+        setStatus("The Kakao Roadview link is not ready.");
+        return;
+      }
+
+      qgisBridge.openKakaoRoadview(position.getLng(), position.getLat());
+    });
+
+    searchForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const query = searchQuery.value.trim();
+      if (!query) {
+        searchQuery.focus();
+        return;
+      }
+      searchLocal(query);
+    });
+
+    searchQuery.addEventListener("input", () => {
+      searchClear.disabled = !searchQuery.value;
+    });
+
+    searchQuery.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        searchResults.hidden = true;
+      }
+    });
+
+    searchClear.addEventListener("click", () => {
+      searchRequestId += 1;
+      searchQuery.value = "";
+      searchResults.textContent = "";
+      searchResults.hidden = true;
+      searchClear.disabled = true;
+      searchSubmit.disabled = false;
+      searchQuery.focus();
+    });
+
+    routeGuidanceToggle.addEventListener("click", () => {
+      const collapsed = routeGuidancePanel.dataset.collapsed === "true";
+      routeGuidancePanel.dataset.collapsed = collapsed ? "false" : "true";
+      routeGuidanceToggle.textContent = collapsed ? "−" : "+";
+      const label = collapsed ? "경로 안내 접기" : "경로 안내 펼치기";
+      routeGuidanceToggle.title = label;
+      routeGuidanceToggle.setAttribute("aria-label", label);
+    });
+
+    routeAddWaypointButton.addEventListener("click", addWaypoint);
+
+    routePrioritySelect.addEventListener("change", () => {
+      const label = routePrioritySelect.options[routePrioritySelect.selectedIndex].text;
+      setStatus(`경로 유형: ${label}`);
+    });
+
+    routeAvoidToggle.addEventListener("click", () => {
+      const opening = routeAvoidOptions.hidden;
+      routeAvoidOptions.hidden = !opening;
+      routeAvoidToggle.setAttribute("aria-expanded", opening ? "true" : "false");
+      if (opening) {
+        routeVehicleOptions.hidden = true;
+        routeVehicleToggle.setAttribute("aria-expanded", "false");
+      }
+    });
+
+    routeAvoidCheckboxes.forEach((checkbox) => {
+      checkbox.addEventListener("change", () => {
+        updateRouteAvoidSummary();
+        const count = selectedRouteAvoidOptions().length;
+        setStatus(count ? `경로 회피 옵션 ${count}개 선택` : "경로 회피 옵션 없음");
+      });
+    });
+
+    routeVehicleToggle.addEventListener("click", () => {
+      const opening = routeVehicleOptions.hidden;
+      routeVehicleOptions.hidden = !opening;
+      routeVehicleToggle.setAttribute("aria-expanded", opening ? "true" : "false");
+      if (opening) {
+        routeAvoidOptions.hidden = true;
+        routeAvoidToggle.setAttribute("aria-expanded", "false");
+      }
+    });
+
+    [routeCarType, routeCarFuel, routeCarHipass].forEach((control) => {
+      control.addEventListener("change", () => {
+        updateRouteVehicleSummary();
+        setStatus(routeVehicleToggle.title);
+      });
+    });
+
+    routeSwapButton.addEventListener("click", swapRouteEndpoints);
+
+    bindRouteInput(
+      routeOriginInput,
+      () => "origin",
+      () => "출발지",
+      (coordinate) => {
+        routeOrigin = coordinate;
+      }
+    );
+
+    bindRouteInput(
+      routeDestinationInput,
+      () => "destination",
+      () => "도착지",
+      (coordinate) => {
+        routeDestination = coordinate;
+      }
+    );
+
+    routeOriginCurrentButton.addEventListener("click", () => {
+      window.clearTimeout(routeSearchTimer);
+      searchRequestId += 1;
+      searchResults.hidden = true;
+      routeOrigin = currentMapCoordinate();
+      if (routeOrigin) {
+        routeOriginInput.value = formatCoordinate(routeOrigin);
+        publishRoutePoint("origin", routeOrigin);
+        setStatus(`출발지: ${routeOrigin.lat.toFixed(6)}, ${routeOrigin.lon.toFixed(6)}`);
+      }
+      updateRouteControls();
+    });
+
+    routeDestinationCurrentButton.addEventListener("click", () => {
+      window.clearTimeout(routeSearchTimer);
+      searchRequestId += 1;
+      searchResults.hidden = true;
+      routeDestination = currentMapCoordinate();
+      if (routeDestination) {
+        routeDestinationInput.value = formatCoordinate(routeDestination);
+        publishRoutePoint("destination", routeDestination);
+        setStatus(`도착지: ${routeDestination.lat.toFixed(6)}, ${routeDestination.lon.toFixed(6)}`);
+      }
+      updateRouteControls();
+    });
+
+    routeCreateButton.addEventListener("click", async () => {
+      if (!qgisBridge) {
+        setStatus("QGIS route bridge is not ready.");
+        return;
+      }
+
+      window.clearTimeout(routeSearchTimer);
+      searchRequestId += 1;
+      searchResults.hidden = true;
+      routeAvoidOptions.hidden = true;
+      routeAvoidToggle.setAttribute("aria-expanded", "false");
+      routeVehicleOptions.hidden = true;
+      routeVehicleToggle.setAttribute("aria-expanded", "false");
+      routeBusy = true;
+      updateRouteControls();
+      setStatus("출발지, 경유지, 도착지를 확인하고 있습니다...");
+
+      try {
+        const locations = await Promise.all([
+          routeOrigin || resolveRouteLocation(routeOriginInput.value),
+          ...routeWaypoints.map((waypoint) => (
+            waypoint.coordinate || resolveRouteLocation(waypoint.input.value)
+          )),
+          routeDestination || resolveRouteLocation(routeDestinationInput.value)
+        ]);
+        routeOrigin = locations[0];
+        routeDestination = locations[locations.length - 1];
+        routeWaypoints.forEach((waypoint, index) => {
+          waypoint.coordinate = locations[index + 1];
+        });
+      } catch (error) {
+        routeBusy = false;
+        setStatus(error.message);
+        updateRouteControls();
+        return;
+      }
+
+      publishRoutePoint("origin", routeOrigin);
+      publishRoutePoint("destination", routeDestination);
+      routeWaypoints.forEach((waypoint) => {
+        publishRoutePoint(waypointPointId(waypoint), waypoint.coordinate);
+      });
+      const waypointPayload = routeWaypoints.map((waypoint) => ({
+        id: waypointPointId(waypoint),
+        lon: waypoint.coordinate.lon,
+        lat: waypoint.coordinate.lat
+      }));
+      setStatus(
+        routeWaypoints.length
+          ? `경유지 ${routeWaypoints.length}개를 포함한 경로를 탐색하고 있습니다...`
+          : "Kakao Mobility 경로를 탐색하고 있습니다..."
+      );
+      qgisBridge.requestRoute(
+        routeOrigin.lon,
+        routeOrigin.lat,
+        routeDestination.lon,
+        routeDestination.lat,
+        routePrioritySelect.value,
+        JSON.stringify(waypointPayload),
+        JSON.stringify(selectedRouteAvoidOptions()),
+        JSON.stringify(selectedRouteVehicleOptions())
+      );
+    });
+
+    routeResetButton.addEventListener("click", () => {
+      window.clearTimeout(routeSearchTimer);
+      searchRequestId += 1;
+      searchResults.hidden = true;
+      routeOrigin = null;
+      routeDestination = null;
+      routeOriginInput.value = "";
+      routeDestinationInput.value = "";
+      routeWaypoints.forEach((waypoint) => waypoint.row.remove());
+      routeWaypoints.length = 0;
+      nextWaypointId = 1;
+      routePrioritySelect.value = "RECOMMEND";
+      routeAvoidCheckboxes.forEach((checkbox) => {
+        checkbox.checked = false;
+      });
+      routeAvoidOptions.hidden = true;
+      routeAvoidToggle.setAttribute("aria-expanded", "false");
+      updateRouteAvoidSummary();
+      routeCarType.value = "1";
+      routeCarFuel.value = "GASOLINE";
+      routeCarHipass.checked = false;
+      routeVehicleOptions.hidden = true;
+      routeVehicleToggle.setAttribute("aria-expanded", "false");
+      updateRouteVehicleSummary();
+      if (qgisBridge) {
+        qgisBridge.clearRoutePoints();
+      }
+      updateRouteControls();
+      setStatus("경로 지점을 초기화했습니다.");
+    });
+
+    function moveViewer(lon, lat) {
+      const requestId = ++moveRequestId;
+      const position = new kakao.maps.LatLng(lat, lon);
+      map.setCenter(position);
+      marker.setPosition(position);
+
+      roadviewClient.getNearestPanoId(position, 80, (panoId) => {
+        if (requestId !== moveRequestId) {
+          return;
+        }
+
+        if (panoId) {
+          programmaticRoadviewPanoId = panoId;
+          roadview.setPanoId(panoId, position);
+          setStatus(`EPSG:4326 ${lat.toFixed(6)}, ${lon.toFixed(6)} - Roadview loaded.`);
+        } else {
+          setStatus(`EPSG:4326 ${lat.toFixed(6)}, ${lon.toFixed(6)} - No nearby Roadview panorama.`);
+        }
+      });
+    }
+
+    window.centerKakaoMap = function centerKakaoMap(lon, lat) {
+      if (!Number.isFinite(lon) || !Number.isFinite(lat)) {
+        setStatus("Invalid coordinate received from QGIS.");
+        return;
+      }
+
+      if (!map || !roadviewClient) {
+        pendingCenter = { lon, lat };
+        setStatus(`Queued EPSG:4326 ${lat.toFixed(6)}, ${lon.toFixed(6)} until Kakao API is ready.`);
+        return;
+      }
+
+      moveViewer(lon, lat);
+    };
+
+    updateRouteVehicleSummary();
+    initQgisBridge();
+
+    if (!kakaoAppKey) {
+      setStatus("Set KAKAO_MAP_JAVASCRIPT_KEY or kakao_qgis_bridge/settings.json before loading the viewer.");
+    } else {
+      loadKakaoScript(kakaoAppKey)
+        .then(initViewer)
+        .catch((error) => setStatus(error.message));
+    }
+  </script>
+</body>
+</html>

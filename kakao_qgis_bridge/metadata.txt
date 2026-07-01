@@ -1,0 +1,15 @@
+[general]
+name=Kakao QGIS Bridge
+qgisMinimumVersion=4.0
+description=Dock-based Kakao Map and Roadview viewer with bidirectional QGIS synchronization and Local search.
+version=0.1.0
+author=yjkim
+email=contact@yjkim.dev
+about=Shows Kakao Maps JavaScript API content inside a QGIS dock widget and synchronizes QGIS, Kakao Map, and Roadview in both directions. Includes Local place/address search and Roadview position/direction display. Kakao tile URLs are not extracted or used as XYZ/TMS layers.
+category=Web
+icon=icon.png
+tracker=
+repository=
+homepage=
+experimental=True
+deprecated=False

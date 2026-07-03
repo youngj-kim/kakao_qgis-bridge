@@ -17,7 +17,9 @@ from .settings import PLUGIN_DIR, kakao_javascript_key
 class KakaoWebBridge(QObject):
     centerRequested = pyqtSignal(float, float)
     roadviewStateChanged = pyqtSignal(float, float, float, float, float, str)
-    routeRequested = pyqtSignal(float, float, float, float, str, str, str, str)
+    routeRequested = pyqtSignal(
+        float, float, float, float, str, str, str, str, str, str
+    )
     routePointChanged = pyqtSignal(str, float, float)
     routePointCleared = pyqtSignal(str)
     routePointsCleared = pyqtSignal()
@@ -53,7 +55,7 @@ class KakaoWebBridge(QObject):
             pano_id,
         )
 
-    @pyqtSlot(float, float, float, float, str, str, str, str)
+    @pyqtSlot(float, float, float, float, str, str, str, str, str, str)
     def requestRoute(
         self,
         origin_lon,
@@ -64,6 +66,8 @@ class KakaoWebBridge(QObject):
         waypoints_json,
         avoid_json,
         vehicle_json,
+        origin_label,
+        destination_label,
     ):
         self.routeRequested.emit(
             origin_lon,
@@ -74,6 +78,8 @@ class KakaoWebBridge(QObject):
             waypoints_json,
             avoid_json,
             vehicle_json,
+            origin_label,
+            destination_label,
         )
 
     @pyqtSlot(str, float, float)
@@ -96,7 +102,9 @@ class KakaoWebBridge(QObject):
 class KakaoMapDockWidget(QDockWidget):
     centerRequested = pyqtSignal(float, float)
     roadviewStateChanged = pyqtSignal(float, float, float, float, float, str)
-    routeRequested = pyqtSignal(float, float, float, float, str, str, str, str)
+    routeRequested = pyqtSignal(
+        float, float, float, float, str, str, str, str, str, str
+    )
     routePointChanged = pyqtSignal(str, float, float)
     routePointCleared = pyqtSignal(str)
     routePointsCleared = pyqtSignal()

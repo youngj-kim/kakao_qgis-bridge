@@ -1784,6 +1784,7 @@
       });
       const waypointPayload = routeWaypoints.map((waypoint) => ({
         id: waypointPointId(waypoint),
+        label: waypoint.input.value.trim(),
         lon: waypoint.coordinate.lon,
         lat: waypoint.coordinate.lat
       }));
@@ -1800,7 +1801,9 @@
         routePrioritySelect.value,
         JSON.stringify(waypointPayload),
         JSON.stringify(selectedRouteAvoidOptions()),
-        JSON.stringify(selectedRouteVehicleOptions())
+        JSON.stringify(selectedRouteVehicleOptions()),
+        routeOriginInput.value.trim(),
+        routeDestinationInput.value.trim()
       );
     });
 

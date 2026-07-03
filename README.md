@@ -170,6 +170,10 @@ QgsApplication.qgisSettingsDirPath()
 21. `⇅` 버튼으로 출발지와 도착지를 교환할 수 있습니다. 경유지의 `↑`, `↓` 버튼으로 이동 순서를 변경한 뒤 경로를 다시 생성할 수 있습니다.
 22. `회피` 버튼을 펼쳐 유료도로, 자동차전용도로, 페리, 어린이보호구역, 유턴을 복수 선택할 수 있습니다.
 23. `차량` 버튼을 펼쳐 차종 7종, 휘발유·경유·LPG 유종, 하이패스 사용 여부를 설정할 수 있습니다.
+24. 경로를 한 번 이상 생성한 뒤 `플러그인 > Kakao QGIS Bridge > 경로 이력 GeoPackage 저장...`을 선택하면 현재 QGIS 세션의 검색 경로와 안내 이력을 저장할 수 있습니다.
+25. 같은 GeoPackage를 다시 선택하면 이미 저장된 `history_id`는 건너뛰고 새 검색 이력만 추가합니다.
+26. 저장된 두 레이어를 QGIS로 다시 불러오면 GeoPackage 내부 기본 스타일이 적용되어 경로선과 안내 SVG 심볼이 복원됩니다.
+27. `경로·안내 이력 GeoJSON 내보내기...`를 선택하면 `*_routes.geojson`, `*_guidance.geojson`과 각각의 `.qml` 스타일 파일이 생성됩니다.
 
 ## 개발 메모
 
@@ -184,7 +188,7 @@ QgsApplication.qgisSettingsDirPath()
 - Roadview 메모리 레이어는 EPSG:4326 포인트 1개를 반투명 원과 시야 부채꼴로 구성된 레이더형 마커로 표시합니다.
 - 레이더형 마커는 `pan` 필드를 회전각으로 사용해 Roadview 시선 방향을 표시합니다.
 - 메모리 레이어 필드는 `pano_id`, `longitude`, `latitude`, `pan`, `tilt`, `zoom`입니다.
-- 경로 레이어는 EPSG:4326 LineString이며 `distance_m`, `duration_s`, `priority`, `waypoint_count`, `avoid`, `car_type`, `car_fuel`, `car_hipass` 속성을 저장합니다.
+- 경로 레이어는 EPSG:4326 LineString이며 거리·시간, 안내 개수, 경로·차량 옵션과 표시용 `result_summary` 속성을 저장합니다.
 - 새 경로를 생성하면 이전 `Kakao Mobility Route` 임시 레이어를 교체합니다.
 - 경로 지점 레이어는 EPSG:4326 Point이며 `point_id`, `role`, `longitude`, `latitude` 속성을 저장합니다.
 - 출발지는 녹색, 도착지는 빨간색 위치 핀으로 분류 렌더링되며 핀 끝이 실제 좌표에 맞춰집니다.
@@ -198,7 +202,17 @@ QgsApplication.qgisSettingsDirPath()
 - 경로 안내 레이어는 EPSG:4326 Point이며 `sequence`, `section_no`, `guide_type`, `category`, `guidance`, 구간·누적 거리와 시간, `road_index` 속성을 저장합니다.
 - 안내 유형은 출발·도착·경유지·직진·좌회전·우회전·유턴·회전교차로·진출입·기타로 분류해 SVG 심볼로 표시합니다.
 - 새 경로를 생성하면 이전 `Kakao Route Guidance` 레이어와 Dock 안내 목록을 현재 결과로 교체합니다.
-- 현재 구현은 검색 이력을 영구 저장하지 않으며 QGIS를 종료하면 안내 메모리 레이어가 제거됩니다.
+- 성공한 경로 검색은 표시용 레이어와 별도로 세션 이력에 누적되며 각 검색에는 UUID 형식의 `history_id`와 ISO 8601 검색 시각이 부여됩니다.
+- GeoPackage에는 EPSG:4326 LineString인 `kakao_route_history`와 Point인 `kakao_guidance_history`가 생성됩니다.
+- 두 이력 레이어는 `history_id`로 연결되며 출발지·도착지·경유지 입력값, Kakao 응답의 `route_id`, 경로 옵션, 차량 설정, 거리·시간 및 순서별 안내 속성을 함께 저장합니다.
+- 경로 이력의 `guidance_count`에는 안내 포인트 수를, `result_summary`에는 `69분 · 31.7 km · 소형 · 안내 32개` 형식의 속성 테이블용 요약을 저장합니다.
+- 이력 스키마 버전은 `schema_ver=2`이며 기존 GeoPackage에 새 필드가 없으면 다음 저장 시 자동으로 추가합니다. 기존 레코드의 새 필드는 `NULL`로 유지됩니다.
+- 같은 GeoPackage에 반복 저장할 때 기존 `history_id`를 확인해 현재 세션의 미저장 피처만 추가합니다. 파일 안의 다른 레이어는 유지됩니다.
+- `layer_styles` 테이블에 경로선과 안내 분류 렌더러를 기본 QML 스타일로 함께 저장하므로 QGIS에서 레이어를 다시 추가할 때 심볼이 자동 적용됩니다.
+- 안내 SVG는 QML 스타일 안에 Base64로 내장되므로 GeoPackage를 다른 PC로 옮겨도 별도 SVG 파일 없이 같은 심볼을 사용할 수 있습니다.
+- GeoJSON은 여러 레이어를 담는 컨테이너가 아니므로 경로 LineString과 안내 Point를 별도 파일로 내보내며 두 파일은 `history_id`로 연결됩니다.
+- GeoJSON은 RFC 7946, EPSG:4326, 소수점 8자리로 출력하고 파일별 Base64 SVG QML 스타일을 함께 생성합니다.
+- 저장하지 않은 세션 이력은 플러그인을 해제하거나 QGIS를 종료하면 제거됩니다.
 
 ## 날짜별 개발 이력
 
@@ -210,7 +224,7 @@ QgsApplication.qgisSettingsDirPath()
 - Kakao JavaScript API 키를 최초 입력창에서 받아 QGIS 사용자 설정에 저장하도록 변경했습니다.
 - `http://localhost:8081`을 Kakao JavaScript API 기준 도메인으로 사용하는 구성을 확인했습니다.
 
-### 2026-06-30 - 1단계 기능 통합 확인
+### 2026-06-30 - 지도·로드뷰 동기화와 경로 탐색 구현
 
 - QGIS 캔버스, Kakao Map, Roadview 사이의 양방향 중심 좌표 동기화를 확인했습니다.
 - Kakao 지도 드래그와 Roadview 이동·회전에 따른 QGIS 이동을 구현했습니다.
@@ -219,7 +233,7 @@ QgsApplication.qgisSettingsDirPath()
 - Kakao Mobility REST API 키 설정과 자동차 경로 탐색을 구현했습니다.
 - 출발지·도착지 분리 입력, 좌표 입력, `Kakao Mobility Route` LineString 임시 레이어 생성을 확인했습니다.
 
-### 2026-07-01 - 1단계 확장 및 마무리
+### 2026-07-01 - 경로 탐색·안내 기능 완성
 
 - 출발지·도착지 위치 핀과 경유지 추가·삭제·순서 변경, 출발지·도착지 교환을 구현했습니다.
 - 경로 입력창의 장소·주소 자동 검색과 Enter 확정을 구현했습니다.
@@ -227,15 +241,26 @@ QgsApplication.qgisSettingsDirPath()
 - 추천·최단 시간·최단 거리, 경로 회피, 차종·유종·하이패스 설정을 구현했습니다.
 - 경로 저장 포맷은 GeoPackage 중심 구조와 SHP·KML·GeoJSON 확장 방향까지 검토했으며 저장 기능은 아직 구현하지 않았습니다.
 
-### 2026-07-02 - 2단계 예정
+### 2026-07-02 - 경로·안내 이력 GeoPackage 저장
 
-- 사용자가 현재 경로를 GeoPackage·SHP·KML 등의 포맷으로 저장하는 기능을 개발합니다.
-- 턴바이턴 안내 이력을 버전이 포함된 JSON 구조로 저장합니다.
-- 경로 파일과 안내 JSON을 공통 `route_id`로 연결하는 결과 패키지 구조를 적용합니다.
+- 성공한 경로 검색과 턴바이턴 안내를 세션 이력으로 누적하도록 구현했습니다.
+- 경로 LineString과 안내 Point를 같은 GeoPackage의 두 레이어로 저장하고 `history_id`로 연결합니다.
+- 기존 GeoPackage에 다시 저장할 때 이미 저장된 이력은 제외하고 새 이력만 추가하며 다른 레이어는 보존합니다.
+- 후속 단계에서 SHP와 GPX 내보내기를 같은 이력 모델에 연결할 예정입니다.
+
+### 2026-07-03 - 이력 심볼 복원과 GeoJSON 내보내기
+
+- 경로선과 안내 SVG 분류 렌더러를 GeoPackage의 `layer_styles` 테이블에 기본 스타일로 저장하도록 개선했습니다.
+- 안내 SVG를 Base64로 스타일에 내장해 플러그인 설치 경로와 무관하게 이동 가능한 GeoPackage로 만들었습니다.
+- 저장된 GeoPackage 레이어를 QGIS에 다시 추가했을 때 경로선과 안내 심볼이 자동 복원되는 것을 확인했습니다.
+- 경로와 안내 이력을 RFC 7946 GeoJSON 두 파일로 내보내고 `history_id`로 연결하도록 구현했습니다.
+- 각 GeoJSON과 같은 이름의 QML 스타일을 생성해 QGIS에서 경로선과 안내 SVG 심볼이 복원되도록 했습니다.
+- 경로 결과에 `guidance_count`와 `result_summary`를 추가하고 기존 GeoPackage 스키마를 자동 확장하도록 개선했습니다.
 
 ## 다음 확장 후보
 
-- 과거 검색 경로와 안내 이력을 GeoPackage로 저장
+- SHP 내보내기와 필드명·문자열 길이 호환 처리
+- GPX 경로·트랙·경유지 매핑
 
 ## 참고 문서
 

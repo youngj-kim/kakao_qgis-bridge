@@ -8,9 +8,18 @@ from qgis.core import QgsSettings
 PLUGIN_DIR = Path(__file__).resolve().parent
 ENV_KAKAO_JS_KEY = "KAKAO_MAP_JAVASCRIPT_KEY"
 ENV_KAKAO_REST_KEY = "KAKAO_REST_API_KEY"
+ENV_KAKAO_MAP_BASE_URL = "KAKAO_MAP_BASE_URL"
+DEFAULT_KAKAO_MAP_BASE_URL = "http://localhost:8081/kakao_qgis_bridge/"
 SETTINGS_FILE = PLUGIN_DIR / "settings.json"
 QGIS_KAKAO_JS_KEY = "kakao_qgis_bridge/kakao_javascript_key"
 QGIS_KAKAO_REST_KEY = "kakao_qgis_bridge/kakao_rest_api_key"
+
+
+def kakao_map_base_url():
+    value = os.getenv(ENV_KAKAO_MAP_BASE_URL, "").strip()
+    if not value:
+        return DEFAULT_KAKAO_MAP_BASE_URL
+    return value.rstrip("/") + "/"
 
 
 def environment_javascript_key():

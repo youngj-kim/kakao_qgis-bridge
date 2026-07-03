@@ -11,7 +11,7 @@ try:
 except ImportError:
     QWebEngineView = None
 
-from .settings import PLUGIN_DIR, kakao_javascript_key
+from .settings import PLUGIN_DIR, kakao_javascript_key, kakao_map_base_url
 
 
 class KakaoWebBridge(QObject):
@@ -185,4 +185,4 @@ class KakaoMapDockWidget(QDockWidget):
             json.dumps(kakao_javascript_key()),
         )
 
-        self.web_view.setHtml(html, QUrl("http://localhost:8081/kakao_qgis_bridge/"))
+        self.web_view.setHtml(html, QUrl(kakao_map_base_url()))

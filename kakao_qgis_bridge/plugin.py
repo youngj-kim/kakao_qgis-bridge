@@ -93,6 +93,7 @@ class KakaoQgisBridgePlugin:
         self.rest_settings_action = None
         self.save_history_action = None
         self.export_geojson_action = None
+        self.export_shapefile_action = None
         self.dock = None
         self.roadview_layer = None
         self.roadview_feature_id = None
@@ -164,6 +165,17 @@ class KakaoQgisBridgePlugin:
         )
         self.iface.addPluginToMenu(MENU_NAME, self.export_geojson_action)
 
+        self.export_shapefile_action = QAction(
+            QIcon.fromTheme("document-export"),
+            "경로·안내 이력 Shapefile 내보내기...",
+            self.iface.mainWindow(),
+        )
+        self.export_shapefile_action.setEnabled(False)
+        self.export_shapefile_action.triggered.connect(
+            self._export_route_history_shapefile
+        )
+        self.iface.addPluginToMenu(MENU_NAME, self.export_shapefile_action)
+
     def unload(self):
         self._deactivate_canvas_sync()
 
@@ -187,6 +199,13 @@ class KakaoQgisBridgePlugin:
         if self.export_geojson_action is not None:
             self.iface.removePluginMenu(MENU_NAME, self.export_geojson_action)
             self.export_geojson_action = None
+
+        if self.export_shapefile_action is not None:
+            self.iface.removePluginMenu(
+                MENU_NAME,
+                self.export_shapefile_action,
+            )
+            self.export_shapefile_action = None
 
         if self.route_reply is not None:
             try:
@@ -1019,6 +1038,8 @@ class KakaoQgisBridgePlugin:
             self.save_history_action.setEnabled(True)
         if self.export_geojson_action is not None:
             self.export_geojson_action.setEnabled(True)
+        if self.export_shapefile_action is not None:
+            self.export_shapefile_action.setEnabled(True)
 
     def _ensure_route_history_layers(self):
         if self.route_history_layer is None:
@@ -1233,21 +1254,109 @@ class KakaoQgisBridgePlugin:
         )
         self.iface.messageBar().pushSuccess("Kakao QGIS Bridge", message)
 
+    def _export_route_history_shapefile(self, _checked=False):
+        if (
+            self.route_history_layer is None
+            or self.route_history_layer.featureCount() == 0
+        ):
+            QMessageBox.information(
+                self.iface.mainWindow(),
+                "Kakao QGIS Bridge",
+                "내보낼 경로 검색 이력이 없습니다. 경로를 먼저 생성해 주세요.",
+            )
+            return
+
+        project_home = QgsProject.instance().homePath()
+        default_name = f"kakao_route_history_{datetime.now():%Y%m%d}.shp"
+        default_path = (
+            str(Path(project_home) / default_name)
+            if project_home
+            else default_name
+        )
+        filename, _selected_filter = QFileDialog.getSaveFileName(
+            self.iface.mainWindow(),
+            "경로·안내 이력 Shapefile 내보내기",
+            default_path,
+            "Shapefile (*.shp)",
+        )
+        if not filename:
+            return
+
+        route_path, guidance_path = self._paired_output_paths(
+            filename,
+            ".shp",
+        )
+        output_paths = self._shapefile_sidecar_paths(route_path)
+        output_paths.extend(self._shapefile_sidecar_paths(guidance_path))
+        existing_paths = [path for path in output_paths if path.exists()]
+        if existing_paths:
+            filenames = "\n".join(path.name for path in existing_paths)
+            answer = QMessageBox.question(
+                self.iface.mainWindow(),
+                "Kakao QGIS Bridge",
+                "다음 파일을 덮어쓸까요?\n\n" + filenames,
+                QMessageBox.StandardButton.Yes
+                | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+
+        try:
+            route_count = self._write_shapefile_history_layer(
+                self.route_history_layer,
+                route_path,
+                "LineString",
+                "Kakao Route History",
+                self._route_shapefile_fields(),
+            )
+            guidance_count = self._write_shapefile_history_layer(
+                self.guidance_history_layer,
+                guidance_path,
+                "Point",
+                "Kakao Guidance History",
+                self._guidance_shapefile_fields(),
+            )
+        except RuntimeError as exc:
+            QgsMessageLog.logMessage(
+                str(exc),
+                LOG_TAG,
+                Qgis.MessageLevel.Critical,
+            )
+            QMessageBox.critical(
+                self.iface.mainWindow(),
+                "Kakao QGIS Bridge",
+                f"Shapefile 내보내기에 실패했습니다.\n\n{exc}",
+            )
+            return
+
+        message = (
+            f"Shapefile 내보내기 완료: 경로 {route_count}건, "
+            f"안내 {guidance_count}건 ({route_path.parent})"
+        )
+        self.iface.messageBar().pushSuccess("Kakao QGIS Bridge", message)
+
     @staticmethod
     def _geojson_output_paths(filename):
+        return KakaoQgisBridgePlugin._paired_output_paths(filename, ".geojson")
+
+    @staticmethod
+    def _paired_output_paths(filename, extension):
         selected_path = Path(filename)
-        if selected_path.suffix.lower() != ".geojson":
-            selected_path = selected_path.with_suffix(".geojson")
+        if selected_path.suffix.lower() != extension:
+            selected_path = selected_path.with_suffix(extension)
 
         base_stem = selected_path.stem
-        for suffix in ("_routes", "_guidance"):
-            if base_stem.lower().endswith(suffix):
-                base_stem = base_stem[:-len(suffix)]
+        for paired_suffix in ("_routes", "_guidance"):
+            if base_stem.lower().endswith(paired_suffix):
+                base_stem = base_stem[:-len(paired_suffix)]
                 break
 
-        route_path = selected_path.with_name(f"{base_stem}_routes.geojson")
+        route_path = selected_path.with_name(
+            f"{base_stem}_routes{selected_path.suffix}"
+        )
         guidance_path = selected_path.with_name(
-            f"{base_stem}_guidance.geojson"
+            f"{base_stem}_guidance{selected_path.suffix}"
         )
         return route_path, guidance_path
 
@@ -1288,15 +1397,176 @@ class KakaoQgisBridgePlugin:
                 f"{output_path.name} 저장 실패: {detail}"
             )
 
-        self._save_geojson_sidecar_style(
+        self._save_sidecar_style(
             output_path,
             layer_name,
             source_layer,
         )
         return source_layer.featureCount()
 
+    def _write_shapefile_history_layer(
+        self,
+        source_layer,
+        output_path,
+        geometry_name,
+        layer_name,
+        field_specs,
+    ):
+        shapefile_layer = self._shapefile_compatible_layer(
+            source_layer,
+            geometry_name,
+            field_specs,
+        )
+
+        options = QgsVectorFileWriter.SaveVectorOptions()
+        options.driverName = "ESRI Shapefile"
+        options.fileEncoding = "UTF-8"
+        options.layerName = layer_name
+        options.actionOnExistingFile = (
+            QgsVectorFileWriter.ActionOnExistingFile.CreateOrOverwriteFile
+        )
+        options.layerOptions = ["ENCODING=UTF-8"]
+
+        result = QgsVectorFileWriter.writeAsVectorFormatV3(
+            shapefile_layer,
+            str(output_path),
+            QgsProject.instance().transformContext(),
+            options,
+        )
+        error_code = result[0] if isinstance(result, tuple) else result
+        error_value = getattr(error_code, "value", error_code)
+        if int(error_value) != 0:
+            error_message = ""
+            if isinstance(result, tuple) and len(result) > 1:
+                error_message = str(result[1] or "")
+            detail = error_message or f"오류 코드 {error_value}"
+            raise RuntimeError(
+                f"{output_path.name} 저장 실패: {detail}"
+            )
+
+        self._save_sidecar_style(
+            output_path,
+            layer_name,
+            source_layer,
+        )
+        return shapefile_layer.featureCount()
+
     @staticmethod
-    def _save_geojson_sidecar_style(
+    def _shapefile_compatible_layer(
+        source_layer,
+        geometry_name,
+        field_specs,
+    ):
+        field_parts = []
+        for spec in field_specs:
+            field_type = spec["type"]
+            if field_type == "string":
+                field_parts.append(
+                    f"&field={spec['name']}:string({spec['length']})"
+                )
+            elif field_type == "double":
+                field_parts.append(f"&field={spec['name']}:double")
+            else:
+                field_parts.append(f"&field={spec['name']}:integer")
+
+        uri = (
+            f"{geometry_name}?crs={source_layer.crs().authid()}"
+            + "".join(field_parts)
+        )
+        layer = QgsVectorLayer(uri, "Kakao History Shapefile Export", "memory")
+        provider = layer.dataProvider()
+        source_field_names = set(source_layer.fields().names())
+
+        features = []
+        for source_feature in source_layer.getFeatures():
+            feature = QgsFeature(layer.fields())
+            feature.setGeometry(source_feature.geometry())
+            attributes = []
+            for spec in field_specs:
+                source_name = spec["source"]
+                value = (
+                    source_feature[source_name]
+                    if source_name in source_field_names
+                    else None
+                )
+                if value is not None and spec["type"] == "string":
+                    value = str(value)
+                    max_length = spec["length"]
+                    if len(value) > max_length:
+                        value = value[:max_length]
+                attributes.append(value)
+            feature.setAttributes(attributes)
+            features.append(feature)
+
+        if features:
+            provider.addFeatures(features)
+            layer.updateExtents()
+        return layer
+
+    @staticmethod
+    def _shapefile_sidecar_paths(path):
+        return [
+            path.with_suffix(extension)
+            for extension in (
+                ".shp",
+                ".shx",
+                ".dbf",
+                ".prj",
+                ".cpg",
+                ".qix",
+                ".qml",
+            )
+        ]
+
+    @staticmethod
+    def _route_shapefile_fields():
+        return [
+            {"name": "schema_v", "source": "schema_ver", "type": "integer"},
+            {"name": "hist_id", "source": "history_id", "type": "string", "length": 36},
+            {"name": "route_id", "source": "route_id", "type": "string", "length": 64},
+            {"name": "searched", "source": "searched_at", "type": "string", "length": 32},
+            {"name": "org_lon", "source": "origin_lon", "type": "double"},
+            {"name": "org_lat", "source": "origin_lat", "type": "double"},
+            {"name": "org_name", "source": "origin_name", "type": "string", "length": 254},
+            {"name": "dst_lon", "source": "destination_lon", "type": "double"},
+            {"name": "dst_lat", "source": "destination_lat", "type": "double"},
+            {"name": "dst_name", "source": "destination_name", "type": "string", "length": 254},
+            {"name": "waypts", "source": "waypoints_json", "type": "string", "length": 254},
+            {"name": "dist_m", "source": "distance_m", "type": "integer"},
+            {"name": "dur_s", "source": "duration_s", "type": "integer"},
+            {"name": "guide_cnt", "source": "guidance_count", "type": "integer"},
+            {"name": "summary", "source": "result_summary", "type": "string", "length": 254},
+            {"name": "priority", "source": "priority", "type": "string", "length": 16},
+            {"name": "avoid", "source": "avoid", "type": "string", "length": 128},
+            {"name": "car_type", "source": "car_type", "type": "integer"},
+            {"name": "car_fuel", "source": "car_fuel", "type": "string", "length": 16},
+            {"name": "car_hipass", "source": "car_hipass", "type": "integer"},
+        ]
+
+    @staticmethod
+    def _guidance_shapefile_fields():
+        return [
+            {"name": "schema_v", "source": "schema_ver", "type": "integer"},
+            {"name": "hist_id", "source": "history_id", "type": "string", "length": 36},
+            {"name": "route_id", "source": "route_id", "type": "string", "length": 64},
+            {"name": "searched", "source": "searched_at", "type": "string", "length": 32},
+            {"name": "seq", "source": "sequence", "type": "integer"},
+            {"name": "sect_no", "source": "section_no", "type": "integer"},
+            {"name": "g_type", "source": "guide_type", "type": "integer"},
+            {"name": "category", "source": "category", "type": "string", "length": 16},
+            {"name": "guidance", "source": "guidance", "type": "string", "length": 254},
+            {"name": "name", "source": "name", "type": "string", "length": 128},
+            {"name": "dist_m", "source": "distance_m", "type": "integer"},
+            {"name": "dur_s", "source": "duration_s", "type": "integer"},
+            {"name": "cum_dist", "source": "cum_distance_m", "type": "integer"},
+            {"name": "cum_dur", "source": "cum_duration_s", "type": "integer"},
+            {"name": "road_idx", "source": "road_index", "type": "integer"},
+            {"name": "lon", "source": "longitude", "type": "double"},
+            {"name": "lat", "source": "latitude", "type": "double"},
+        ]
+
+    @staticmethod
+    def _save_sidecar_style(
         output_path,
         layer_name,
         source_layer,

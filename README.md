@@ -201,6 +201,7 @@ QgsApplication.qgisSettingsDirPath()
 25. 같은 GeoPackage를 다시 선택하면 이미 저장된 `history_id`는 건너뛰고 새 검색 이력만 추가합니다.
 26. 저장된 두 레이어를 QGIS로 다시 불러오면 GeoPackage 내부 기본 스타일이 적용되어 경로선과 안내 SVG 심볼이 복원됩니다.
 27. `경로·안내 이력 GeoJSON 내보내기...`를 선택하면 `*_routes.geojson`, `*_guidance.geojson`과 각각의 `.qml` 스타일 파일이 생성됩니다.
+28. `경로·안내 이력 Shapefile 내보내기...`를 선택하면 `*_routes.shp`, `*_guidance.shp` 파일 세트와 각각의 `.qml` 스타일 파일이 생성됩니다.
 
 ## 개발 메모
 
@@ -239,6 +240,8 @@ QgsApplication.qgisSettingsDirPath()
 - 안내 SVG는 QML 스타일 안에 Base64로 내장되므로 GeoPackage를 다른 PC로 옮겨도 별도 SVG 파일 없이 같은 심볼을 사용할 수 있습니다.
 - GeoJSON은 여러 레이어를 담는 컨테이너가 아니므로 경로 LineString과 안내 Point를 별도 파일로 내보내며 두 파일은 `history_id`로 연결됩니다.
 - GeoJSON은 RFC 7946, EPSG:4326, 소수점 8자리로 출력하고 파일별 Base64 SVG QML 스타일을 함께 생성합니다.
+- Shapefile은 필드명과 문자열 길이 제약이 있으므로 `history_id`는 `hist_id`, `guidance_count`는 `guide_cnt`처럼 짧은 필드명으로 변환해 내보냅니다.
+- Shapefile의 긴 문자열은 254자 기준으로 잘릴 수 있으므로 전체 경유지 JSON이나 긴 설명을 보존해야 할 때는 GeoPackage 또는 GeoJSON을 우선 사용합니다.
 - 저장하지 않은 세션 이력은 플러그인을 해제하거나 QGIS를 종료하면 제거됩니다.
 
 ## 날짜별 개발 이력
@@ -285,9 +288,14 @@ QgsApplication.qgisSettingsDirPath()
 - 경로 결과에 `guidance_count`와 `result_summary`를 추가하고 기존 GeoPackage 스키마를 자동 확장하도록 개선했습니다.
 - Kakao API 키 발급과 JavaScript SDK 도메인 등록 절차를 문서화하고 `KAKAO_MAP_BASE_URL` 환경변수로 localhost 포트를 변경할 수 있게 했습니다.
 
+### 2026-07-08 - Shapefile 이력 내보내기
+
+- 경로와 안내 이력을 `*_routes.shp`, `*_guidance.shp` 두 Shapefile 세트로 내보낼 수 있도록 메뉴를 추가했습니다.
+- Shapefile 호환성을 위해 긴 필드명을 10자 이내의 짧은 필드명으로 변환하는 별도 내보내기 레이어를 생성합니다.
+- UTF-8 인코딩과 QML 스타일 파일을 함께 생성해 QGIS에서 다시 불러올 때 경로선과 안내 심볼을 쉽게 복원할 수 있게 했습니다.
+
 ## 다음 확장 후보
 
-- SHP 내보내기와 필드명·문자열 길이 호환 처리
 - GPX 경로·트랙·경유지 매핑
 
 ## 참고 문서

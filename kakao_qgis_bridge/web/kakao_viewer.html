@@ -327,6 +327,38 @@
       border-bottom: 1px solid #e3e5e6;
     }
 
+    #route-panel-tabs {
+      display: inline-flex;
+      flex: 0 0 auto;
+      overflow: hidden;
+      border: 1px solid #c6ccd1;
+      border-radius: 6px;
+      background: #f8f9fa;
+    }
+
+    .route-panel-tab {
+      min-width: 48px;
+      height: 28px;
+      padding: 0 8px;
+      border: 0;
+      border-right: 1px solid #c6ccd1;
+      background: transparent;
+      color: #3f474d;
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .route-panel-tab:last-child {
+      border-right: 0;
+    }
+
+    .route-panel-tab.is-active {
+      background: #2b5f9e;
+      color: #ffffff;
+      font-weight: 600;
+    }
+
     #route-guidance-summary-text {
       flex: 1;
       min-width: 0;
@@ -350,20 +382,24 @@
       cursor: pointer;
     }
 
-    #route-guidance-list {
+    #route-guidance-list,
+    #route-history-list {
       max-height: min(28vh, 260px);
       overflow-y: auto;
     }
 
-    #route-guidance-panel[data-collapsed="true"] #route-guidance-list {
+    #route-guidance-panel[data-collapsed="true"] #route-guidance-list,
+    #route-guidance-panel[data-collapsed="true"] #route-history-list,
+    #route-guidance-list[hidden],
+    #route-history-list[hidden] {
       display: none;
     }
 
-    .guidance-item {
+    .guidance-item,
+    .history-item {
       display: grid;
       width: 100%;
       min-height: 54px;
-      grid-template-columns: 30px 28px minmax(0, 1fr);
       align-items: center;
       gap: 7px;
       padding: 7px 10px;
@@ -376,9 +412,45 @@
       cursor: pointer;
     }
 
+    .guidance-item {
+      grid-template-columns: 30px 28px minmax(0, 1fr);
+    }
+
+    .history-item {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .history-actions {
+      display: flex;
+      gap: 5px;
+      margin-top: 6px;
+    }
+
+    .history-actions button {
+      min-height: 26px;
+      padding: 3px 8px;
+      border: 1px solid #b8c1c8;
+      border-radius: 6px;
+      background: #ffffff;
+      color: #1f2428;
+      font: inherit;
+      font-size: 11px;
+      cursor: pointer;
+    }
+
+    .history-actions button:hover,
+    .history-actions button:focus {
+      border-color: #2b5f9e;
+      color: #174d86;
+      outline: none;
+    }
+
     .guidance-item:hover,
     .guidance-item:focus,
-    .guidance-item.is-active {
+    .guidance-item.is-active,
+    .history-item:hover,
+    .history-item:focus,
+    .history-item.is-active {
       background: #edf4fc;
       outline: none;
     }
@@ -428,22 +500,32 @@
     }
 
     .guidance-title,
-    .guidance-meta {
+    .guidance-meta,
+    .history-title,
+    .history-meta {
       display: block;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
 
-    .guidance-title {
+    .guidance-title,
+    .history-title {
       font-size: 12px;
       font-weight: 600;
     }
 
-    .guidance-meta {
+    .guidance-meta,
+    .history-meta {
       margin-top: 3px;
       color: #687176;
       font-size: 11px;
+    }
+
+    .history-empty {
+      padding: 12px;
+      color: #687176;
+      font-size: 12px;
     }
 
     .search-result {
@@ -611,10 +693,15 @@
       </div>
       <section id="route-guidance-panel" aria-label="경로 안내" data-collapsed="false" hidden>
         <div id="route-guidance-summary">
+          <div id="route-panel-tabs" role="tablist" aria-label="경로 정보">
+            <button id="route-guidance-tab" class="route-panel-tab is-active" type="button" role="tab" aria-selected="true">안내</button>
+            <button id="route-history-tab" class="route-panel-tab" type="button" role="tab" aria-selected="false">이력</button>
+          </div>
           <strong id="route-guidance-summary-text"></strong>
           <button id="route-guidance-toggle" type="button" title="경로 안내 접기" aria-label="경로 안내 접기">−</button>
         </div>
         <div id="route-guidance-list" role="listbox" aria-label="순서별 경로 안내"></div>
+        <div id="route-history-list" role="listbox" aria-label="경로 이력" hidden></div>
       </section>
       <div id="search-results" role="listbox" aria-label="검색 결과" hidden></div>
     </header>
@@ -655,9 +742,12 @@
     const routeSwapButton = document.getElementById("route-swap");
     const routeResetButton = document.getElementById("route-reset");
     const routeGuidancePanel = document.getElementById("route-guidance-panel");
+    const routeGuidanceTab = document.getElementById("route-guidance-tab");
+    const routeHistoryTab = document.getElementById("route-history-tab");
     const routeGuidanceSummaryText = document.getElementById("route-guidance-summary-text");
     const routeGuidanceToggle = document.getElementById("route-guidance-toggle");
     const routeGuidanceList = document.getElementById("route-guidance-list");
+    const routeHistoryList = document.getElementById("route-history-list");
     const maxRouteWaypoints = 5;
 
     let map = null;
@@ -676,7 +766,10 @@
     let routeBusy = false;
     let routeSearchTimer = null;
     let routeGuidance = [];
+    let routeHistory = [];
     let activeGuidanceSequence = null;
+    let activeRouteHistoryId = "";
+    let activeRoutePanelTab = "guidance";
     let qgisBridge = null;
     let mapSyncTimer = null;
     let roadviewSyncTimer = null;
@@ -753,6 +846,139 @@
       return icons[category] || icons.other;
     }
 
+    function routePriorityLabel(priority) {
+      const labels = {
+        RECOMMEND: "추천",
+        TIME: "최단 시간",
+        DISTANCE: "최단 거리"
+      };
+      return labels[priority] || priority || "";
+    }
+
+    function formatHistoryTime(value) {
+      if (!value) {
+        return "";
+      }
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) {
+        return value;
+      }
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      const hour = String(date.getHours()).padStart(2, "0");
+      const minute = String(date.getMinutes()).padStart(2, "0");
+      return `${month}-${day} ${hour}:${minute}`;
+    }
+
+    function updateRoutePanelVisibility() {
+      routeGuidancePanel.hidden = !routeGuidance.length && !routeHistory.length;
+    }
+
+    function activateRoutePanelTab(tabName) {
+      activeRoutePanelTab = tabName === "history" ? "history" : "guidance";
+      const showingHistory = activeRoutePanelTab === "history";
+      routeGuidanceTab.classList.toggle("is-active", !showingHistory);
+      routeHistoryTab.classList.toggle("is-active", showingHistory);
+      routeGuidanceTab.setAttribute("aria-selected", showingHistory ? "false" : "true");
+      routeHistoryTab.setAttribute("aria-selected", showingHistory ? "true" : "false");
+      routeGuidanceList.hidden = showingHistory;
+      routeHistoryList.hidden = !showingHistory;
+      routeGuidanceSummaryText.textContent = showingHistory
+        ? `경로 이력 ${routeHistory.length}건`
+        : routeGuidanceSummaryText.dataset.guidanceSummary || "";
+      updateRoutePanelVisibility();
+    }
+
+    function selectRouteHistory(history, item) {
+      activeRouteHistoryId = history.history_id || "";
+      routeHistoryList.querySelectorAll(".history-item").forEach((candidate) => {
+        candidate.classList.toggle("is-active", candidate === item);
+      });
+      if (qgisBridge && activeRouteHistoryId) {
+        qgisBridge.selectRouteHistory(activeRouteHistoryId);
+      }
+      setStatus(`${history.origin_name || "출발지"} → ${history.destination_name || "도착지"}`);
+    }
+
+    function renderRouteHistory(payload) {
+      const items = Array.isArray(payload.items) ? payload.items : [];
+      routeHistory = items;
+      activeRouteHistoryId = payload.selected_history_id || activeRouteHistoryId || "";
+      routeHistoryList.textContent = "";
+
+      if (!items.length) {
+        const empty = document.createElement("div");
+        empty.className = "history-empty";
+        empty.textContent = "아직 경로 이력이 없습니다.";
+        routeHistoryList.appendChild(empty);
+      }
+
+      items.forEach((history) => {
+        const item = document.createElement("div");
+        item.className = "history-item";
+        item.setAttribute("role", "option");
+        item.setAttribute("tabindex", "0");
+        if (history.history_id === activeRouteHistoryId) {
+          item.classList.add("is-active");
+        }
+
+        const title = document.createElement("span");
+        title.className = "history-title";
+        title.textContent = `${history.origin_name || "출발지"} → ${history.destination_name || "도착지"}`;
+
+        const summary = document.createElement("span");
+        summary.className = "history-meta";
+        summary.textContent = history.result_summary || [
+          formatGuidanceDuration(Number(history.duration_s)),
+          formatGuidanceDistance(Number(history.distance_m)),
+          `안내 ${Number(history.guidance_count) || 0}개`
+        ].filter(Boolean).join(" · ");
+
+        const options = document.createElement("span");
+        options.className = "history-meta";
+        const optionParts = [
+          routePriorityLabel(history.priority),
+          history.avoid ? `회피 ${history.avoid.split("|").filter(Boolean).length}` : "",
+          formatHistoryTime(history.searched_at)
+        ].filter(Boolean);
+        options.textContent = optionParts.join(" · ");
+
+        const actions = document.createElement("span");
+        actions.className = "history-actions";
+        [
+          ["불러오기", "loadRouteHistory"],
+          ["삭제", "deleteRouteHistory"],
+          ["내보내기", "exportRouteHistory"]
+        ].forEach(([label, bridgeMethod]) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.textContent = label;
+          button.addEventListener("click", (event) => {
+            event.stopPropagation();
+            if (qgisBridge && history.history_id) {
+              qgisBridge[bridgeMethod](history.history_id);
+            }
+          });
+          actions.appendChild(button);
+        });
+
+        item.append(title, summary, options, actions);
+        item.addEventListener("click", () => selectRouteHistory(history, item));
+        item.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            selectRouteHistory(history, item);
+          }
+        });
+        routeHistoryList.appendChild(item);
+      });
+
+      if (activeRoutePanelTab === "history") {
+        activateRoutePanelTab("history");
+      }
+      updateRoutePanelVisibility();
+    }
+
     function selectRouteGuidance(guide, item) {
       activeGuidanceSequence = guide.sequence;
       routeGuidanceList.querySelectorAll(".guidance-item").forEach((candidate) => {
@@ -777,7 +1003,8 @@
       routeGuidanceList.textContent = "";
 
       if (!guides.length) {
-        routeGuidancePanel.hidden = true;
+        routeGuidanceSummaryText.dataset.guidanceSummary = "";
+        updateRoutePanelVisibility();
         return;
       }
 
@@ -801,7 +1028,7 @@
         vehicleTypeLabels[vehicle.car_type] || "",
         `안내 ${guides.length}개`
       ].filter(Boolean);
-      routeGuidanceSummaryText.textContent = summaryParts.join(" · ");
+      routeGuidanceSummaryText.dataset.guidanceSummary = summaryParts.join(" · ");
       routeGuidancePanel.dataset.collapsed = "false";
       routeGuidanceToggle.textContent = "−";
       routeGuidanceToggle.title = "경로 안내 접기";
@@ -843,7 +1070,8 @@
         routeGuidanceList.appendChild(item);
       });
 
-      routeGuidancePanel.hidden = false;
+      activateRoutePanelTab("guidance");
+      updateRoutePanelVisibility();
     }
 
     function initQgisBridge() {
@@ -862,8 +1090,18 @@
           try {
             renderRouteGuidance(JSON.parse(payloadJson));
           } catch (error) {
-            routeGuidancePanel.hidden = true;
+            routeGuidance = [];
+            updateRoutePanelVisibility();
             setStatus("경로 안내 목록을 표시하지 못했습니다.");
+          }
+        });
+        qgisBridge.routeHistoryChanged.connect((payloadJson) => {
+          try {
+            renderRouteHistory(JSON.parse(payloadJson));
+          } catch (error) {
+            routeHistory = [];
+            updateRoutePanelVisibility();
+            setStatus("경로 이력 목록을 표시하지 못했습니다.");
           }
         });
       });
@@ -1267,6 +1505,70 @@
       setStatus(`${routeWaypoints.length}번째 경유지를 추가했습니다.`);
     }
 
+    function clearRouteInputs(resetOptions = true) {
+      window.clearTimeout(routeSearchTimer);
+      searchRequestId += 1;
+      searchResults.hidden = true;
+      routeOrigin = null;
+      routeDestination = null;
+      routeOriginInput.value = "";
+      routeDestinationInput.value = "";
+      routeWaypoints.forEach((waypoint) => waypoint.row.remove());
+      routeWaypoints.length = 0;
+      nextWaypointId = 1;
+
+      if (resetOptions) {
+        routePrioritySelect.value = "RECOMMEND";
+        routeAvoidCheckboxes.forEach((checkbox) => {
+          checkbox.checked = false;
+        });
+        routeCarType.value = "1";
+        routeCarFuel.value = "GASOLINE";
+        routeCarHipass.checked = false;
+      }
+
+      routeAvoidOptions.hidden = true;
+      routeAvoidToggle.setAttribute("aria-expanded", "false");
+      updateRouteAvoidSummary();
+      routeVehicleOptions.hidden = true;
+      routeVehicleToggle.setAttribute("aria-expanded", "false");
+      updateRouteVehicleSummary();
+      if (qgisBridge) {
+        qgisBridge.clearRoutePoints();
+      }
+      updateRouteControls();
+    }
+
+    function routeInputLabel(location, fallback) {
+      const label = location && location.label ? String(location.label).trim() : "";
+      if (label) {
+        return label;
+      }
+      if (
+        location &&
+        Number.isFinite(Number(location.lon)) &&
+        Number.isFinite(Number(location.lat))
+      ) {
+        return formatCoordinate({
+          lon: Number(location.lon),
+          lat: Number(location.lat)
+        });
+      }
+      return fallback;
+    }
+
+    function applyLoadedRoutePoint(pointId, location) {
+      const coordinate = {
+        lon: Number(location.lon),
+        lat: Number(location.lat)
+      };
+      if (!Number.isFinite(coordinate.lon) || !Number.isFinite(coordinate.lat)) {
+        return null;
+      }
+      publishRoutePoint(pointId, coordinate);
+      return coordinate;
+    }
+
     function syncKakaoMapToQgis() {
       const position = map.getCenter();
       const lat = position.getLat();
@@ -1652,6 +1954,14 @@
       routeGuidanceToggle.setAttribute("aria-label", label);
     });
 
+    routeGuidanceTab.addEventListener("click", () => {
+      activateRoutePanelTab("guidance");
+    });
+
+    routeHistoryTab.addEventListener("click", () => {
+      activateRoutePanelTab("history");
+    });
+
     routeAddWaypointButton.addEventListener("click", addWaypoint);
 
     routePrioritySelect.addEventListener("change", () => {
@@ -1808,33 +2118,7 @@
     });
 
     routeResetButton.addEventListener("click", () => {
-      window.clearTimeout(routeSearchTimer);
-      searchRequestId += 1;
-      searchResults.hidden = true;
-      routeOrigin = null;
-      routeDestination = null;
-      routeOriginInput.value = "";
-      routeDestinationInput.value = "";
-      routeWaypoints.forEach((waypoint) => waypoint.row.remove());
-      routeWaypoints.length = 0;
-      nextWaypointId = 1;
-      routePrioritySelect.value = "RECOMMEND";
-      routeAvoidCheckboxes.forEach((checkbox) => {
-        checkbox.checked = false;
-      });
-      routeAvoidOptions.hidden = true;
-      routeAvoidToggle.setAttribute("aria-expanded", "false");
-      updateRouteAvoidSummary();
-      routeCarType.value = "1";
-      routeCarFuel.value = "GASOLINE";
-      routeCarHipass.checked = false;
-      routeVehicleOptions.hidden = true;
-      routeVehicleToggle.setAttribute("aria-expanded", "false");
-      updateRouteVehicleSummary();
-      if (qgisBridge) {
-        qgisBridge.clearRoutePoints();
-      }
-      updateRouteControls();
+      clearRouteInputs(true);
       setStatus("경로 지점을 초기화했습니다.");
     });
 
@@ -1872,6 +2156,59 @@
       }
 
       moveViewer(lon, lat);
+    };
+
+    window.loadRouteHistoryInput = function loadRouteHistoryInput(payload) {
+      clearRouteInputs(false);
+
+      const origin = payload.origin || {};
+      const destination = payload.destination || {};
+      routeOriginInput.value = routeInputLabel(origin, "출발지");
+      routeDestinationInput.value = routeInputLabel(destination, "도착지");
+      routeOrigin = applyLoadedRoutePoint("origin", origin);
+      routeDestination = applyLoadedRoutePoint("destination", destination);
+
+      const waypoints = Array.isArray(payload.waypoints)
+        ? payload.waypoints.slice(0, maxRouteWaypoints)
+        : [];
+      waypoints.forEach((waypointPayload) => {
+        addWaypoint();
+        const waypoint = routeWaypoints[routeWaypoints.length - 1];
+        waypoint.input.value = routeInputLabel(
+          waypointPayload,
+          `경유지 ${routeWaypoints.length}`
+        );
+        waypoint.coordinate = applyLoadedRoutePoint(
+          waypointPointId(waypoint),
+          waypointPayload
+        );
+      });
+
+      if (payload.priority && routePrioritySelect.querySelector(`option[value="${payload.priority}"]`)) {
+        routePrioritySelect.value = payload.priority;
+      }
+
+      const avoid = Array.isArray(payload.avoid) ? payload.avoid : [];
+      routeAvoidCheckboxes.forEach((checkbox) => {
+        checkbox.checked = avoid.includes(checkbox.value);
+      });
+      updateRouteAvoidSummary();
+
+      const vehicle = payload.vehicle || {};
+      if (vehicle.car_type !== undefined) {
+        routeCarType.value = String(vehicle.car_type);
+      }
+      if (vehicle.car_fuel) {
+        routeCarFuel.value = vehicle.car_fuel;
+      }
+      routeCarHipass.checked = Boolean(vehicle.car_hipass);
+      updateRouteVehicleSummary();
+
+      updateRouteControls();
+      if (routeOrigin) {
+        moveViewer(routeOrigin.lon, routeOrigin.lat);
+      }
+      setStatus("선택한 이력을 경로 입력창으로 불러왔습니다.");
     };
 
     updateRouteVehicleSummary();

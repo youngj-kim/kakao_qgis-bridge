@@ -3,13 +3,23 @@ import math
 
 from qgis.PyQt.QtCore import QObject, QUrl, pyqtSignal, pyqtSlot
 from qgis.PyQt.QtGui import QDesktopServices
-from qgis.PyQt.QtWebChannel import QWebChannel
 from qgis.PyQt.QtWidgets import QLabel, QVBoxLayout, QWidget, QDockWidget
+
+try:
+    from qgis.PyQt.QtWebChannel import QWebChannel
+except ImportError:
+    try:
+        from PyQt5.QtWebChannel import QWebChannel
+    except ImportError:
+        QWebChannel = None
 
 try:
     from qgis.PyQt.QtWebEngineWidgets import QWebEngineView
 except ImportError:
-    QWebEngineView = None
+    try:
+        from PyQt5.QtWebEngineWidgets import QWebEngineView
+    except ImportError:
+        QWebEngineView = None
 
 from .settings import PLUGIN_DIR, kakao_javascript_key, kakao_map_base_url
 
@@ -26,6 +36,11 @@ class KakaoWebBridge(QObject):
     routeStatusChanged = pyqtSignal(bool, str)
     routeGuidanceChanged = pyqtSignal(str)
     routeGuidanceSelected = pyqtSignal(int, float, float)
+    routeHistoryChanged = pyqtSignal(str)
+    routeHistorySelected = pyqtSignal(str)
+    routeHistoryLoadRequested = pyqtSignal(str)
+    routeHistoryDeleteRequested = pyqtSignal(str)
+    routeHistoryExportRequested = pyqtSignal(str)
 
     @pyqtSlot(float, float)
     def moveQgisCenter(self, lon, lat):
@@ -98,6 +113,22 @@ class KakaoWebBridge(QObject):
     def selectRouteGuidance(self, sequence, lon, lat):
         self.routeGuidanceSelected.emit(sequence, lon, lat)
 
+    @pyqtSlot(str)
+    def selectRouteHistory(self, history_id):
+        self.routeHistorySelected.emit(history_id)
+
+    @pyqtSlot(str)
+    def loadRouteHistory(self, history_id):
+        self.routeHistoryLoadRequested.emit(history_id)
+
+    @pyqtSlot(str)
+    def deleteRouteHistory(self, history_id):
+        self.routeHistoryDeleteRequested.emit(history_id)
+
+    @pyqtSlot(str)
+    def exportRouteHistory(self, history_id):
+        self.routeHistoryExportRequested.emit(history_id)
+
 
 class KakaoMapDockWidget(QDockWidget):
     centerRequested = pyqtSignal(float, float)
@@ -109,6 +140,10 @@ class KakaoMapDockWidget(QDockWidget):
     routePointCleared = pyqtSignal(str)
     routePointsCleared = pyqtSignal()
     routeGuidanceSelected = pyqtSignal(int, float, float)
+    routeHistorySelected = pyqtSignal(str)
+    routeHistoryLoadRequested = pyqtSignal(str)
+    routeHistoryDeleteRequested = pyqtSignal(str)
+    routeHistoryExportRequested = pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__("Kakao Map / Roadview", parent)
@@ -120,9 +155,12 @@ class KakaoMapDockWidget(QDockWidget):
         layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        if QWebEngineView is None:
+        if QWebEngineView is None or QWebChannel is None:
             message = QLabel(
-                "Qt WebEngine is not available in this QGIS Python environment.",
+                (
+                    "Qt WebEngine/WebChannel is not available in this "
+                    "QGIS Python environment."
+                ),
                 container,
             )
             message.setWordWrap(True)
@@ -159,6 +197,12 @@ class KakaoMapDockWidget(QDockWidget):
                 json.dumps(payload, ensure_ascii=False)
             )
 
+    def set_route_history(self, payload):
+        if self.web_bridge is not None:
+            self.web_bridge.routeHistoryChanged.emit(
+                json.dumps(payload, ensure_ascii=False)
+            )
+
     def _configure_web_channel(self):
         self.web_bridge = KakaoWebBridge(self)
         self.web_bridge.centerRequested.connect(self.centerRequested.emit)
@@ -171,6 +215,18 @@ class KakaoMapDockWidget(QDockWidget):
         self.web_bridge.routePointsCleared.connect(self.routePointsCleared.emit)
         self.web_bridge.routeGuidanceSelected.connect(
             self.routeGuidanceSelected.emit
+        )
+        self.web_bridge.routeHistorySelected.connect(
+            self.routeHistorySelected.emit
+        )
+        self.web_bridge.routeHistoryLoadRequested.connect(
+            self.routeHistoryLoadRequested.emit
+        )
+        self.web_bridge.routeHistoryDeleteRequested.connect(
+            self.routeHistoryDeleteRequested.emit
+        )
+        self.web_bridge.routeHistoryExportRequested.connect(
+            self.routeHistoryExportRequested.emit
         )
 
         self.web_channel = QWebChannel(self.web_view.page())

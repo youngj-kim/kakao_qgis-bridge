@@ -1,6 +1,6 @@
 # Kakao QGIS Bridge
 
-QGIS 4.0 / Qt 6 환경을 목표로 하는 최소 Python 플러그인 골격입니다. Plugin Builder를 사용하지 않고 직접 관리할 수 있도록 `metadata.txt`, `__init__.py`, 플러그인 클래스, Dock Widget, Kakao Maps JavaScript API HTML 뷰어를 작게 분리했습니다.
+QGIS 3.34 LTR 이상과 QGIS 4.0 / Qt 6 환경을 함께 고려하는 Python 플러그인입니다. Plugin Builder를 사용하지 않고 직접 관리할 수 있도록 `metadata.txt`, `__init__.py`, 플러그인 클래스, Dock Widget, Kakao Maps JavaScript API HTML 뷰어를 작게 분리했습니다.
 
 이 플러그인은 Kakao 지도 타일 URL을 추출하거나 QGIS XYZ/TMS 배경지도로 등록하지 않습니다. 대신 QGIS Dock Widget 안의 `QWebEngineView`에서 Kakao Maps JavaScript API를 로드하고, QGIS 기본 탐색 기능으로 변경된 캔버스 중심 좌표를 EPSG:4326으로 변환해 Kakao Map과 Roadview 중심으로 전달합니다.
 
@@ -161,16 +161,19 @@ QGIS 플러그인 디렉터리에 `kakao_qgis_bridge` 폴더를 복사하거나 
 일반적인 Windows 개발용 경로 예시는 다음과 같습니다.
 
 ```text
+%APPDATA%\QGIS\QGIS3\profiles\default\python\plugins\kakao_qgis_bridge
 %APPDATA%\QGIS\QGIS4\profiles\default\python\plugins\kakao_qgis_bridge
 ```
 
-QGIS 4 프로필 경로는 설치 방식이나 프리릴리스 빌드에 따라 다를 수 있습니다. QGIS에서 Python 콘솔을 열 수 있다면 아래 값으로 실제 프로필 루트를 확인할 수 있습니다.
+QGIS 프로필 경로는 설치 방식이나 프리릴리스 빌드에 따라 다를 수 있습니다. QGIS에서 Python 콘솔을 열 수 있다면 아래 값으로 실제 프로필 루트를 확인할 수 있습니다.
 
 ```python
 QgsApplication.qgisSettingsDirPath()
 ```
 
 설치 후 QGIS를 다시 시작하고, 플러그인 관리자에서 `Kakao QGIS Bridge`를 활성화합니다.
+
+QGIS 3.34 LTR 호환은 코드 구조를 맞추는 중이며, 실제 지원 표기는 QGIS 3.34 환경에서 로딩·WebEngine·저장/불러오기 동작을 확인한 뒤 확정합니다.
 
 ## 실행 방법
 
@@ -202,6 +205,13 @@ QgsApplication.qgisSettingsDirPath()
 26. 저장된 두 레이어를 QGIS로 다시 불러오면 GeoPackage 내부 기본 스타일이 적용되어 경로선과 안내 SVG 심볼이 복원됩니다.
 27. `경로·안내 이력 GeoJSON 내보내기...`를 선택하면 `*_routes.geojson`, `*_guidance.geojson`과 각각의 `.qml` 스타일 파일이 생성됩니다.
 28. `경로·안내 이력 Shapefile 내보내기...`를 선택하면 `*_routes.shp`, `*_guidance.shp` 파일 세트와 각각의 `.qml` 스타일 파일이 생성됩니다.
+29. `경로·안내 이력 GPX 내보내기...`를 선택하면 경로 이력을 GPS 교환용 `*.gpx` 파일로 저장합니다.
+30. Dock 하단의 `이력` 탭에서 현재 세션의 경로 검색 이력을 확인하고, 항목을 선택하면 해당 경로와 안내 지점이 QGIS와 Kakao 지도에 다시 표시됩니다.
+31. QGIS를 다시 실행했거나 세션 이력이 비어 있을 때 `플러그인 > Kakao QGIS Bridge > 경로 이력 불러오기...`를 선택하면 저장해 둔 GeoPackage, GeoJSON, Shapefile 이력을 다시 이력 탭으로 불러올 수 있습니다.
+32. `플러그인 > Kakao QGIS Bridge > GPX 스타일 적용해서 불러오기...`를 선택하면 GPX의 `tracks`, `routes`, `waypoints` 레이어를 추가하고 같은 폴더의 QML 스타일을 자동 적용합니다.
+33. 이력 항목의 `불러오기`를 선택하면 출발지·도착지·경유지와 경로 옵션을 입력창으로 다시 채웁니다.
+34. 이력 항목의 `삭제`를 선택하면 현재 세션 이력에서 해당 경로와 안내 포인트를 제거합니다.
+35. 이력 항목의 `내보내기`를 선택하면 해당 이력만 GeoPackage, GeoJSON, Shapefile, GPX 중 하나로 저장할 수 있습니다.
 
 ## 개발 메모
 
@@ -209,7 +219,7 @@ QgsApplication.qgisSettingsDirPath()
 - QGIS 캔버스의 현재 목적 CRS를 기준으로 중심 좌표를 읽고, `QgsCoordinateTransform`으로 EPSG:4326 변환을 수행합니다.
 - 연속 드래그 중에는 350ms 디바운스를 적용해 Kakao Roadview 요청이 과도하게 발생하지 않도록 합니다.
 - Python에서 JavaScript로 값을 넘길 때는 `QWebEnginePage.runJavaScript()`를 사용합니다.
-- JavaScript에서 Python으로 값을 넘길 때는 Qt 6의 `QWebChannel`을 사용합니다.
+- JavaScript에서 Python으로 값을 넘길 때는 Qt의 `QWebChannel`을 사용합니다.
 - Kakao 지도 또는 Roadview에서 QGIS로 이동한 직후에는 600ms 동안 정방향 재전송을 막아 순환 동기화를 방지합니다.
 - 과거 촬영본 목록은 JavaScript API에서 제공되지 않으므로 공식 카카오맵 Roadview 링크에서 선택합니다.
 - Local 검색은 이미 로드한 Kakao Maps JavaScript `services` 라이브러리를 사용하므로 별도의 REST API 키가 필요하지 않습니다.
@@ -242,6 +252,16 @@ QgsApplication.qgisSettingsDirPath()
 - GeoJSON은 RFC 7946, EPSG:4326, 소수점 8자리로 출력하고 파일별 Base64 SVG QML 스타일을 함께 생성합니다.
 - Shapefile은 필드명과 문자열 길이 제약이 있으므로 `history_id`는 `hist_id`, `guidance_count`는 `guide_cnt`처럼 짧은 필드명으로 변환해 내보냅니다.
 - Shapefile의 긴 문자열은 254자 기준으로 잘릴 수 있으므로 전체 경유지 JSON이나 긴 설명을 보존해야 할 때는 GeoPackage 또는 GeoJSON을 우선 사용합니다.
+- GPX는 한 파일 안에 경로 선형을 `trk`와 `rte`로 함께 저장하고, 출발지·도착지·경유지·안내 지점을 `wpt`로 저장합니다.
+- GPX 내보내기 시 QGIS 스타일 복원을 위해 `*_tracks.qml`, `*_routes.qml`, `*_waypoints.qml` 파일도 함께 생성합니다.
+- GPX 웨이포인트 QML은 `type` 필드를 기준으로 출발지·도착지·경유지·안내 유형을 분류 렌더링합니다.
+- GPX를 QGIS에 직접 드래그하면 QGIS 기본 스타일이 적용될 수 있으므로, 스타일 복원이 필요하면 플러그인의 `GPX 스타일 적용해서 불러오기...` 메뉴를 사용합니다.
+- GPX의 표준 필드로 담기 어려운 `history_id`, 경로 옵션, 거리·시간, 안내 순번 등은 `kakao:*` 확장 태그로 기록합니다.
+- Dock의 경로 이력 탭은 세션 메모리 이력을 기준으로 표시되며, 선택한 `history_id`의 경로 LineString과 안내 Point를 현재 표시 레이어로 재구성합니다.
+- `경로 이력 불러오기...`는 GeoPackage의 `kakao_route_history`, `kakao_guidance_history` 레이어 또는 GeoJSON/Shapefile의 `*_routes`, `*_guidance` 짝 파일을 현재 세션 이력으로 병합합니다.
+- 불러올 때 이미 현재 세션에 있는 `history_id`는 건너뛰어 중복 이력을 만들지 않습니다.
+- 이력의 `불러오기` 기능은 저장된 출발지·도착지·경유지 좌표와 라벨, 경로 유형, 회피 옵션, 차량 설정을 경로 입력 UI로 복원합니다.
+- 선택 이력 내보내기는 전체 세션 저장과 같은 스키마를 사용하되 선택된 `history_id` 1건과 연결된 안내 포인트만 대상으로 합니다.
 - 저장하지 않은 세션 이력은 플러그인을 해제하거나 QGIS를 종료하면 제거됩니다.
 
 ## 날짜별 개발 이력
@@ -294,9 +314,33 @@ QgsApplication.qgisSettingsDirPath()
 - Shapefile 호환성을 위해 긴 필드명을 10자 이내의 짧은 필드명으로 변환하는 별도 내보내기 레이어를 생성합니다.
 - UTF-8 인코딩과 QML 스타일 파일을 함께 생성해 QGIS에서 다시 불러올 때 경로선과 안내 심볼을 쉽게 복원할 수 있게 했습니다.
 
+### 2026-07-08 - 경로 이력 패널 MVP
+
+- Dock의 안내 패널을 `안내`와 `이력` 탭 구조로 확장했습니다.
+- 경로 생성 시 현재 세션의 검색 이력을 목록으로 갱신하고 검색 시각, 출발·도착지, 거리·시간, 안내 개수를 표시합니다.
+- 이력 항목을 선택하면 해당 `history_id`의 경로와 안내 지점을 현재 QGIS 임시 레이어로 다시 표시하고 Kakao 지도 중심도 이동합니다.
+- 선택한 이력을 경로 입력창으로 불러와 재검색할 수 있도록 출발지·도착지·경유지와 옵션 복원 기능을 추가했습니다.
+- 선택한 이력을 현재 세션에서 삭제하고, 선택 이력만 GeoPackage·GeoJSON·Shapefile로 내보낼 수 있도록 확장했습니다.
+- 저장해 둔 GeoPackage·GeoJSON·Shapefile 이력을 현재 세션 이력 탭으로 다시 불러오는 메뉴를 추가했습니다.
+
+### 2026-07-08 - GPX 경로·트랙·경유지 내보내기
+
+- 경로 이력을 GPS 교환용 GPX 1.1 파일로 내보내는 메뉴를 추가했습니다.
+- 각 경로 이력은 `trk`와 `rte`에 함께 저장하고, 출발지·도착지·경유지·턴바이턴 안내 지점은 `wpt`로 저장합니다.
+- 선택 이력 내보내기에도 GPX 형식을 추가해 개별 경로만 GPX로 저장할 수 있도록 했습니다.
+- GPX 표준 요소에 담기 어려운 이력 식별자와 경로 속성은 `kakao:*` 확장 태그로 보존합니다.
+- GPX와 함께 트랙·루트·웨이포인트용 QML 스타일 파일을 생성해 QGIS에서 심볼을 복원할 수 있게 했습니다.
+- GPX 파일을 선택하면 `tracks`, `routes`, `waypoints` 레이어만 QGIS에 추가하고 대응 QML을 자동 적용하는 불러오기 메뉴를 추가했습니다.
+
+### 2026-07-08 - QGIS 3.34 LTR 호환 준비
+
+- 플러그인 메타데이터의 최소 QGIS 버전을 3.34로 조정해 QGIS 3.34 LTR 호환 점검을 시작할 수 있게 했습니다.
+- Qt5/Qt6와 QGIS 3/4 사이에서 달라질 수 있는 메시지박스 버튼, 로그 레벨, 벡터 파일 저장 액션, 스타일 DB 저장 API를 `compat.py`로 분리했습니다.
+- README 설치 경로와 프로젝트 설명을 QGIS 3.34 LTR 이상 및 QGIS 4 병행 방향으로 정리했습니다.
+
 ## 다음 확장 후보
 
-- GPX 경로·트랙·경유지 매핑
+- 이력 검색·필터와 여러 이력 비교
 
 ## 참고 문서
 

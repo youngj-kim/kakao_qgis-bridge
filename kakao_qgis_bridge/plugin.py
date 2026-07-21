@@ -8,6 +8,7 @@ from xml.etree import ElementTree as ET
 from uuid import uuid4
 
 from qgis.core import (
+    Qgis,
     QgsCategorizedSymbolRenderer,
     QgsCoordinateReferenceSystem,
     QgsCoordinateTransform,
@@ -118,6 +119,7 @@ class KakaoQgisBridgePlugin:
         self.route_point_feature_ids = {}
         self.route_history_layer = None
         self.guidance_history_layer = None
+        self.active_route_history_id = None
         self.route_reply = None
         self.network_manager = QNetworkAccessManager()
         self.canvas_sync_connected = False
@@ -417,15 +419,14 @@ class KakaoQgisBridgePlugin:
         self.dock.routeHistoryLoadRequested.connect(self._load_route_history)
         self.dock.routeHistoryDeleteRequested.connect(self._delete_route_history)
         self.dock.routeHistoryExportRequested.connect(self._export_single_route_history)
+        self.dock.routeHistoryRefreshRequested.connect(
+            self._refresh_route_history_panel
+        )
         self.dock.externalViewerRequested.connect(self._open_external_viewer)
         self.dock.visibilityChanged.connect(self._sync_action_state)
         self.iface.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.dock)
         if self.dock.web_runtime_diagnostic:
             self._ensure_external_bridge()
-            self.iface.messageBar().pushWarning(
-                "Kakao QGIS Bridge",
-                "Qt WebEngine/WebChannel 구성요소가 없어 외부 브라우저 모드로 전환합니다.",
-            )
             QgsMessageLog.logMessage(
                 self.dock.web_runtime_diagnostic,
                 LOG_TAG,
@@ -526,8 +527,15 @@ class KakaoQgisBridgePlugin:
                     self._export_single_route_history(
                         str(payload.get("history_id", ""))
                     )
+                elif event_type == "refresh_route_history":
+                    self._refresh_route_history_panel()
             except (TypeError, ValueError) as exc:
                 QgsMessageLog.logMessage(str(exc), LOG_TAG, MSG_WARNING)
+                if event_type == "request_route":
+                    self._set_route_status(
+                        False,
+                        "외부 브라우저의 경로 요청을 처리하지 못했습니다.",
+                    )
 
     def _sync_action_state(self, visible):
         if self.action is not None:
@@ -1014,6 +1022,7 @@ class KakaoQgisBridgePlugin:
             vehicle_options,
         )
         guidance_payload = {
+            "history_id": history_id,
             "route_id": route_id,
             "summary": {
                 "distance_m": distance,
@@ -1025,9 +1034,11 @@ class KakaoQgisBridgePlugin:
                 "avoid": avoid_options,
                 "vehicle": vehicle_options,
             },
+            "path": self._route_path_payload(points),
             "guides": guides,
         }
         self._create_route_guidance_layer(guides)
+        self.active_route_history_id = history_id
         self._append_route_history(
             history_id=history_id,
             route_id=route_id,
@@ -1597,15 +1608,17 @@ class KakaoQgisBridgePlugin:
         ]
 
     def _sync_route_history_panel(self, selected_history_id=None):
-        if self.dock is None:
-            return
         payload = self._route_history_payload(selected_history_id)
-        self.dock.set_route_history(payload)
+        if self.dock is not None:
+            self.dock.set_route_history(payload)
         if self.external_bridge_server is not None:
             self.external_bridge_server.emit_signal(
                 "routeHistoryChanged",
                 json.dumps(payload, ensure_ascii=False),
             )
+
+    def _refresh_route_history_panel(self):
+        self._sync_route_history_panel(self.active_route_history_id)
 
     def _route_history_payload(self, selected_history_id=None):
         if self.route_history_layer is None:
@@ -1670,6 +1683,7 @@ class KakaoQgisBridgePlugin:
             route_feature,
             guide_features,
         )
+        self.active_route_history_id = history_id
         points = self._route_points_from_geometry(route_feature.geometry())
         if len(points) >= 2:
             vehicle_options = guidance_payload["summary"]["vehicle"]
@@ -1693,6 +1707,12 @@ class KakaoQgisBridgePlugin:
         if self.dock is not None:
             self.dock.set_center(center.x(), center.y())
             self.dock.set_route_guidance(guidance_payload)
+        if self.external_bridge_server is not None:
+            self.external_bridge_server.set_center(center.x(), center.y())
+            self.external_bridge_server.emit_signal(
+                "routeGuidanceChanged",
+                json.dumps(guidance_payload, ensure_ascii=False),
+            )
         self._sync_route_history_panel(history_id)
         self.iface.messageBar().pushInfo(
             "Kakao QGIS Bridge",
@@ -1701,14 +1721,20 @@ class KakaoQgisBridgePlugin:
 
     def _load_route_history(self, history_id):
         route_feature = self._route_feature_for_history(history_id)
-        if route_feature is None or self.dock is None:
+        if route_feature is None:
             return
 
         payload = self._route_input_payload_from_history(route_feature)
-        script = "window.loadRouteHistoryInput({payload});".format(
-            payload=json.dumps(payload, ensure_ascii=False)
-        )
-        self.dock.web_view.page().runJavaScript(script)
+        if self.dock is not None and self.dock.web_view is not None:
+            script = "window.loadRouteHistoryInput({payload});".format(
+                payload=json.dumps(payload, ensure_ascii=False)
+            )
+            self.dock.web_view.page().runJavaScript(script)
+        if self.external_bridge_server is not None:
+            self.external_bridge_server.emit_signal(
+                "loadRouteHistoryInput",
+                json.dumps(payload, ensure_ascii=False),
+            )
         self.iface.messageBar().pushInfo(
             "Kakao QGIS Bridge",
             "선택한 이력을 경로 입력창으로 불러왔습니다.",
@@ -1733,6 +1759,8 @@ class KakaoQgisBridgePlugin:
         if answer != MSGBOX_YES:
             return
 
+        was_active_history = history_id == self.active_route_history_id
+
         if self.route_history_layer is not None:
             self.route_history_layer.dataProvider().deleteFeatures(
                 [route_feature.id()]
@@ -1749,6 +1777,9 @@ class KakaoQgisBridgePlugin:
                     guidance_ids
                 )
                 self.guidance_history_layer.updateExtents()
+
+        if was_active_history:
+            self._clear_current_route_display()
 
         self._sync_route_history_panel()
         self._update_history_action_state()
@@ -2022,6 +2053,7 @@ class KakaoQgisBridgePlugin:
             if value
         ]
         return {
+            "history_id": str(route_feature["history_id"] or ""),
             "route_id": str(route_feature["route_id"] or ""),
             "summary": {
                 "distance_m": self._safe_number(route_feature["distance_m"]),
@@ -2034,6 +2066,9 @@ class KakaoQgisBridgePlugin:
                 "avoid": avoid,
                 "vehicle": vehicle,
             },
+            "path": self._route_path_payload(
+                self._route_points_from_geometry(route_feature.geometry())
+            ),
             "guides": [
                 {
                     "route_id": str(feature["route_id"] or ""),
@@ -2067,6 +2102,16 @@ class KakaoQgisBridgePlugin:
             parts = geometry.asMultiPolyline()
             return parts[0] if parts else []
         return geometry.asPolyline()
+
+    @staticmethod
+    def _route_path_payload(points):
+        return [
+            {
+                "lon": point.x(),
+                "lat": point.y(),
+            }
+            for point in points
+        ]
 
     @staticmethod
     def _waypoint_count_from_history(route_feature):
@@ -3507,6 +3552,25 @@ class KakaoQgisBridgePlugin:
         self.route_guidance_layer = None
         self.route_guidance_feature_ids = {}
 
+    def _clear_current_route_display(self):
+        self.active_route_history_id = None
+        self._remove_route_layer()
+        self._remove_route_guidance_layer()
+        payload = {
+            "history_id": "",
+            "route_id": "",
+            "summary": {},
+            "path": [],
+            "guides": [],
+        }
+        if self.dock is not None:
+            self.dock.set_route_guidance(payload)
+        if self.external_bridge_server is not None:
+            self.external_bridge_server.emit_signal(
+                "routeGuidanceChanged",
+                json.dumps(payload, ensure_ascii=False),
+            )
+
     def _set_route_point(self, point_id, lon, lat):
         role = self._route_point_role(point_id)
         if role is None:
@@ -3598,7 +3662,12 @@ class KakaoQgisBridgePlugin:
             KakaoQgisBridgePlugin._embedded_svg_path(filename),
             size,
         )
-        symbol_layer.setVerticalAnchorPoint(Qgis.VerticalAnchorPoint.Bottom)
+        vertical_anchor = getattr(Qgis, "VerticalAnchorPoint", None)
+        bottom_anchor = getattr(vertical_anchor, "Bottom", None)
+        if bottom_anchor is None:
+            bottom_anchor = getattr(symbol_layer, "Bottom", None)
+        if bottom_anchor is not None:
+            symbol_layer.setVerticalAnchorPoint(bottom_anchor)
         return QgsMarkerSymbol([symbol_layer])
 
     @staticmethod

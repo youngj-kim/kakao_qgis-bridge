@@ -14,7 +14,8 @@ EXTERNAL_BRIDGE_SCRIPT = r"""
   const handlers = {
     routeStatusChanged: [],
     routeGuidanceChanged: [],
-    routeHistoryChanged: []
+    routeHistoryChanged: [],
+    loadRouteHistoryInput: []
   };
   let lastCenterSequence = -1;
   let lastEventSequence = 0;
@@ -85,6 +86,7 @@ EXTERNAL_BRIDGE_SCRIPT = r"""
     routeStatusChanged: signal("routeStatusChanged"),
     routeGuidanceChanged: signal("routeGuidanceChanged"),
     routeHistoryChanged: signal("routeHistoryChanged"),
+    loadRouteHistoryInput: signal("loadRouteHistoryInput"),
     moveQgisCenter(lon, lat) {
       post("/api/move-center", { lon, lat });
     },
@@ -129,6 +131,9 @@ EXTERNAL_BRIDGE_SCRIPT = r"""
     },
     exportRouteHistory(history_id) {
       post("/api/export-route-history", { history_id });
+    },
+    refreshRouteHistory() {
+      post("/api/refresh-route-history", {});
     },
     requestRoute(
       origin_lon,

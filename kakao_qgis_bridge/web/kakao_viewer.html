@@ -450,7 +450,7 @@
     #route-actions {
       display: grid;
       grid-column: 1 / -1;
-      grid-template-columns: minmax(0, 1fr) 34px 34px;
+      grid-template-columns: minmax(0, 1fr) 88px 34px 34px;
       gap: 6px;
     }
 
@@ -460,10 +460,15 @@
       color: #ffffff !important;
     }
 
+    #route-history-open,
+    #route-swap,
+    #route-reset {
+      padding: 0 !important;
+    }
+
     #route-swap,
     #route-reset {
       width: 34px;
-      padding: 0 !important;
       font-size: 18px !important;
     }
 
@@ -923,6 +928,7 @@
         <button id="route-destination-current" class="route-current" type="button" title="현재 지도 중심을 도착지로 사용" disabled>현재 위치</button>
         <div id="route-actions">
           <button id="route-create" type="button" disabled>경로 생성</button>
+          <button id="route-history-open" type="button" title="경로 이력 열기" disabled>이력</button>
           <button id="route-swap" type="button" title="출발지와 도착지 바꾸기" aria-label="출발지와 도착지 바꾸기" disabled>⇅</button>
           <button id="route-reset" type="button" title="경로 입력 초기화" aria-label="경로 입력 초기화" disabled>×</button>
         </div>
@@ -983,6 +989,7 @@
     const routeAddWaypointButton = document.getElementById("route-add-waypoint");
     const routeWaypointsContainer = document.getElementById("route-waypoints");
     const routeCreateButton = document.getElementById("route-create");
+    const routeHistoryOpenButton = document.getElementById("route-history-open");
     const routeSwapButton = document.getElementById("route-swap");
     const routeResetButton = document.getElementById("route-reset");
     const routeGuidancePanel = document.getElementById("route-guidance-panel");
@@ -1011,6 +1018,7 @@
     let routeSearchTimer = null;
     let routeGuidance = [];
     let routeHistory = [];
+    let routePolyline = null;
     let activeGuidanceSequence = null;
     let activeRouteHistoryId = "";
     let activeRoutePanelTab = "guidance";
@@ -1232,7 +1240,10 @@
     }
 
     function updateRoutePanelVisibility() {
-      routeGuidancePanel.hidden = !routeGuidance.length && !routeHistory.length;
+      routeGuidancePanel.hidden =
+        !routeGuidance.length &&
+        !routeHistory.length &&
+        activeRoutePanelTab !== "history";
     }
 
     function activateRoutePanelTab(tabName) {
@@ -1263,9 +1274,16 @@
 
     function renderRouteHistory(payload) {
       const items = Array.isArray(payload.items) ? payload.items : [];
+      const previousHistoryId = activeRouteHistoryId;
       routeHistory = items;
-      activeRouteHistoryId = payload.selected_history_id || activeRouteHistoryId || "";
+      const selectedHistoryId = payload.selected_history_id || activeRouteHistoryId || "";
+      const selectedExists = items.some((history) => history.history_id === selectedHistoryId);
+      activeRouteHistoryId = selectedExists ? selectedHistoryId : "";
       routeHistoryList.textContent = "";
+
+      if (previousHistoryId && !activeRouteHistoryId) {
+        renderRouteGuidance({ history_id: "", summary: {}, path: [], guides: [] });
+      }
 
       if (!items.length) {
         const empty = document.createElement("div");
@@ -1337,6 +1355,7 @@
       if (activeRoutePanelTab === "history") {
         activateRoutePanelTab("history");
       }
+      updateRouteControls();
       updateRoutePanelVisibility();
     }
 
@@ -1357,11 +1376,52 @@
       setStatus(`${guide.sequence}. ${guide.guidance}`);
     }
 
+    function clearRoutePath() {
+      if (routePolyline) {
+        routePolyline.setMap(null);
+        routePolyline = null;
+      }
+    }
+
+    function renderRoutePath(path) {
+      clearRoutePath();
+      if (!map || !Array.isArray(path) || path.length < 2) {
+        return;
+      }
+
+      const linePath = path
+        .map((point) => ({
+          lat: Number(point.lat),
+          lon: Number(point.lon)
+        }))
+        .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lon))
+        .map((point) => new kakao.maps.LatLng(point.lat, point.lon));
+
+      if (linePath.length < 2) {
+        return;
+      }
+
+      routePolyline = new kakao.maps.Polyline({
+        map,
+        path: linePath,
+        strokeWeight: 5,
+        strokeColor: "#1976d2",
+        strokeOpacity: 0.9,
+        strokeStyle: "solid"
+      });
+
+      const bounds = new kakao.maps.LatLngBounds();
+      linePath.forEach((point) => bounds.extend(point));
+      map.setBounds(bounds);
+      scheduleStableRelayout();
+    }
+
     function renderRouteGuidance(payload) {
       const guides = Array.isArray(payload.guides) ? payload.guides : [];
       routeGuidance = guides;
       activeGuidanceSequence = null;
       routeGuidanceList.textContent = "";
+      renderRoutePath(payload.path);
 
       if (!guides.length) {
         routeGuidanceSummaryText.dataset.guidanceSummary = "";
@@ -1453,6 +1513,7 @@
             renderRouteGuidance(JSON.parse(payloadJson));
           } catch (error) {
             routeGuidance = [];
+            clearRoutePath();
             updateRoutePanelVisibility();
             setStatus("경로 안내 목록을 표시하지 못했습니다.");
           }
@@ -1469,12 +1530,22 @@
           }
         });
       }
+      if (qgisBridge.loadRouteHistoryInput) {
+        qgisBridge.loadRouteHistoryInput.connect((payloadJson) => {
+          try {
+            window.loadRouteHistoryInput(JSON.parse(payloadJson));
+          } catch (error) {
+            setStatus("경로 이력을 입력창으로 불러오지 못했습니다.");
+          }
+        });
+      }
     }
 
     function initQgisBridge() {
       if (window.kakaoExternalBridge) {
         qgisBridge = window.kakaoExternalBridge;
         connectQgisBridgeSignals();
+        updateRouteControls();
         setStatus("외부 브라우저 연동 모드로 QGIS와 연결했습니다.");
         return;
       }
@@ -1486,6 +1557,7 @@
       new QWebChannel(window.qt.webChannelTransport, (channel) => {
         qgisBridge = channel.objects.qgisBridge;
         connectQgisBridgeSignals();
+        updateRouteControls();
       });
     }
 
@@ -1584,6 +1656,7 @@
       const hasDestination = Boolean(routeDestinationInput.value.trim());
       const waypointsReady = routeWaypoints.every((waypoint) => waypoint.input.value.trim());
       routeCreateButton.disabled = routeBusy || !(hasOrigin && hasDestination && waypointsReady);
+      routeHistoryOpenButton.disabled = routeBusy || !qgisBridge;
       routeResetButton.disabled = routeBusy || !(hasOrigin || hasDestination || routeWaypoints.length);
       routeSwapButton.disabled = !map || routeBusy || !(hasOrigin || hasDestination);
       routePrioritySelect.disabled = !map || routeBusy;
@@ -2432,6 +2505,19 @@
       activateRoutePanelTab("history");
     });
 
+    routeHistoryOpenButton.addEventListener("click", () => {
+      if (qgisBridge && qgisBridge.refreshRouteHistory) {
+        qgisBridge.refreshRouteHistory();
+      }
+      routeGuidancePanel.dataset.collapsed = "false";
+      routeGuidanceToggle.textContent = "−";
+      routeGuidanceToggle.title = "경로 안내 접기";
+      routeGuidanceToggle.setAttribute("aria-label", "경로 안내 접기");
+      activateRoutePanelTab("history");
+      routeGuidancePanel.scrollIntoView({ block: "nearest" });
+      setStatus(routeHistory.length ? "경로 이력을 열었습니다." : "경로 이력을 확인하고 있습니다.");
+    });
+
     routeAddWaypointButton.addEventListener("click", addWaypoint);
 
     routePrioritySelect.addEventListener("change", () => {
@@ -2589,6 +2675,7 @@
 
     routeResetButton.addEventListener("click", () => {
       clearRouteInputs(true);
+      clearRoutePath();
       setStatus("경로 지점을 초기화했습니다.");
     });
 

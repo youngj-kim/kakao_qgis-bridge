@@ -1,6 +1,7 @@
 [general]
 name=Kakao QGIS Bridge
 qgisMinimumVersion=3.34
+qgisMaximumVersion=4.99
 description=Dock-based Kakao Map and Roadview viewer with bidirectional QGIS synchronization and Local search.
 version=0.2.0
 author=yjkim

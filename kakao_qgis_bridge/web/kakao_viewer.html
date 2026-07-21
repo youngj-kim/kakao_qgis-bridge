@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ko">
+<html lang="ko" class="centered-viewer">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -17,9 +17,143 @@
 
     #viewer {
       display: grid;
-      grid-template-rows: auto minmax(240px, 1fr) minmax(220px, 0.9fr) auto;
+      --split-primary-size: 50%;
+      grid-template-rows:
+        auto
+        minmax(180px, var(--split-primary-size))
+        10px
+        minmax(180px, 1fr)
+        auto;
+      grid-template-columns: minmax(0, 1fr);
       height: 100%;
       position: relative;
+    }
+
+    #viewer.layout-map-top {
+      grid-template-rows:
+        auto
+        minmax(180px, var(--split-primary-size))
+        10px
+        minmax(180px, 1fr)
+        auto;
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    #viewer.layout-roadview-top {
+      grid-template-rows:
+        auto
+        minmax(180px, var(--split-primary-size))
+        10px
+        minmax(180px, 1fr)
+        auto;
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    #viewer.layout-map-left,
+    #viewer.layout-roadview-left {
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      grid-template-columns:
+        minmax(240px, var(--split-primary-size))
+        10px
+        minmax(240px, 1fr);
+    }
+
+    #search-panel,
+    #status-bar {
+      grid-column: 1 / -1;
+    }
+
+    #viewer.layout-map-top #map,
+    #viewer.layout-roadview-top #roadview {
+      grid-row: 2;
+    }
+
+    #viewer.layout-map-top #roadview,
+    #viewer.layout-roadview-top #map {
+      grid-row: 4;
+    }
+
+    #view-splitter {
+      grid-row: 3;
+      grid-column: 1;
+    }
+
+    #viewer.layout-map-left #map,
+    #viewer.layout-roadview-left #roadview {
+      grid-row: 2;
+      grid-column: 1;
+    }
+
+    #viewer.layout-map-left #roadview,
+    #viewer.layout-roadview-left #map {
+      grid-row: 2;
+      grid-column: 3;
+    }
+
+    #viewer.layout-map-left #view-splitter,
+    #viewer.layout-roadview-left #view-splitter {
+      grid-row: 2;
+      grid-column: 2;
+    }
+
+    #view-splitter {
+      position: relative;
+      z-index: 15;
+      display: grid;
+      place-items: center;
+      background: rgba(255, 255, 255, 0.76);
+      box-shadow: inset 0 0 0 1px rgba(31, 36, 40, 0.08);
+      touch-action: none;
+    }
+
+    #viewer.layout-map-top #view-splitter,
+    #viewer.layout-roadview-top #view-splitter {
+      cursor: row-resize;
+    }
+
+    #viewer.layout-map-left #view-splitter,
+    #viewer.layout-roadview-left #view-splitter {
+      cursor: col-resize;
+    }
+
+    #split-toggle {
+      width: 34px;
+      height: 34px;
+      border: 1px solid rgba(70, 83, 93, 0.35);
+      border-radius: 999px;
+      background: #ffffff;
+      color: #263238;
+      font: inherit;
+      font-size: 18px;
+      line-height: 1;
+      box-shadow: 0 2px 8px rgba(31, 36, 40, 0.16);
+      cursor: pointer;
+    }
+
+    #split-toggle:hover {
+      background: #f3f6f8;
+    }
+
+    html.centered-viewer,
+    html.centered-viewer body {
+      min-height: 100%;
+      background: #e6e8ea;
+    }
+
+    html.centered-viewer #viewer {
+      width: min(100vw, 1280px);
+      height: 100vh;
+      margin: 0 auto;
+      overflow: hidden;
+      background: #f7f7f4;
+      box-shadow: 0 0 0 1px rgba(31, 36, 40, 0.08),
+        0 18px 42px rgba(31, 36, 40, 0.18);
+    }
+
+    @media (min-width: 1440px) {
+      html.centered-viewer #viewer {
+        width: min(74vw, 1320px);
+      }
     }
 
     #search-panel {
@@ -32,11 +166,13 @@
 
     #search-form {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto 34px;
+      grid-template-areas: "query submit layout fullscreen clear";
+      grid-template-columns: minmax(0, 1fr) auto auto 34px 34px;
       gap: 6px;
     }
 
     #search-query {
+      grid-area: query;
       min-width: 0;
       height: 34px;
       padding: 0 9px;
@@ -54,6 +190,8 @@
       outline-offset: 0;
     }
 
+    #viewer-layout,
+    #fullscreen-toggle,
     #search-submit,
     #search-clear {
       height: 34px;
@@ -65,7 +203,17 @@
       cursor: pointer;
     }
 
+    #viewer-layout {
+      grid-area: layout;
+      min-width: 120px;
+      max-width: 100%;
+      padding: 0 8px;
+      background: #ffffff;
+      font-size: 12px;
+    }
+
     #search-submit {
+      grid-area: submit;
       min-width: 54px;
       padding: 0 12px;
       background: #ffffff;
@@ -74,12 +222,23 @@
     }
 
     #search-clear {
+      grid-area: clear;
       width: 34px;
       padding: 0;
       font-size: 20px;
       line-height: 1;
     }
 
+    #fullscreen-toggle {
+      grid-area: fullscreen;
+      width: 34px;
+      padding: 0;
+      font-size: 17px;
+      line-height: 1;
+    }
+
+    #viewer-layout:hover,
+    #fullscreen-toggle:hover,
     #search-submit:hover,
     #search-clear:hover {
       background: #e8eaeb;
@@ -578,7 +737,11 @@
 
     #map,
     #roadview {
+      width: 100%;
+      height: 100%;
+      min-width: 0;
       min-height: 220px;
+      overflow: hidden;
     }
 
     #status-bar {
@@ -620,10 +783,76 @@
       opacity: 0.5;
     }
 
+    @media (max-width: 980px) {
+      #viewer.layout-map-left,
+      #viewer.layout-roadview-left {
+        grid-template-rows:
+          auto
+          minmax(180px, var(--split-primary-size))
+          10px
+          minmax(180px, 1fr)
+          auto;
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      #viewer.layout-map-left #map,
+      #viewer.layout-roadview-left #roadview {
+        grid-row: 2;
+        grid-column: 1;
+      }
+
+      #viewer.layout-map-left #roadview,
+      #viewer.layout-roadview-left #map {
+        grid-row: 4;
+        grid-column: 1;
+      }
+
+      #viewer.layout-map-left #view-splitter,
+      #viewer.layout-roadview-left #view-splitter {
+        grid-row: 3;
+        grid-column: 1;
+        cursor: row-resize;
+      }
+
+      #search-form {
+        grid-template-areas:
+          "query submit fullscreen clear"
+          "layout layout layout layout";
+        grid-template-columns: minmax(0, 1fr) 58px 34px 34px;
+      }
+
+      #viewer-layout {
+        width: 100%;
+      }
+
+      #route-options {
+        grid-template-columns: auto minmax(0, 1fr) auto auto;
+      }
+
+      #route-add-waypoint {
+        grid-column: 2 / -1;
+      }
+
+      #route-vehicle-options {
+        grid-template-columns: auto minmax(0, 1fr);
+      }
+    }
+
     @media (max-width: 420px) {
       #status-bar {
         align-items: stretch;
         flex-direction: column;
+      }
+
+      #route-controls,
+      .route-waypoint {
+        grid-template-columns: auto minmax(0, 1fr);
+      }
+
+      #route-origin-current,
+      #route-destination-current,
+      #route-actions {
+        grid-column: 2;
       }
 
       #open-history {
@@ -633,11 +862,18 @@
   </style>
 </head>
 <body>
-  <main id="viewer">
+  <main id="viewer" class="layout-map-top">
     <header id="search-panel">
       <form id="search-form" role="search">
         <input id="search-query" type="search" aria-label="주소 또는 장소 검색" placeholder="주소 또는 장소 검색" autocomplete="off" disabled>
         <button id="search-submit" type="submit" disabled>검색</button>
+        <select id="viewer-layout" aria-label="지도와 로드뷰 배치">
+          <option value="map-top">지도 위 / 로드뷰 아래</option>
+          <option value="roadview-top">로드뷰 위 / 지도 아래</option>
+          <option value="map-left">지도 좌 / 로드뷰 우</option>
+          <option value="roadview-left">로드뷰 좌 / 지도 우</option>
+        </select>
+        <button id="fullscreen-toggle" type="button" title="전체화면 전환" aria-label="전체화면 전환">⛶</button>
         <button id="search-clear" type="button" title="검색 지우기" aria-label="검색 지우기" disabled>×</button>
       </form>
       <div id="route-controls" aria-label="경로 탐색">
@@ -706,6 +942,9 @@
       <div id="search-results" role="listbox" aria-label="검색 결과" hidden></div>
     </header>
     <section id="map" aria-label="Kakao map"></section>
+    <div id="view-splitter" role="separator" aria-label="지도와 로드뷰 크기 조절" aria-orientation="horizontal">
+      <button id="split-toggle" type="button" title="지도와 로드뷰 위치 전환" aria-label="지도와 로드뷰 위치 전환">⇅</button>
+    </div>
     <section id="roadview" aria-label="Kakao roadview"></section>
     <footer id="status-bar">
       <output id="status">Initializing Kakao Map viewer...</output>
@@ -721,6 +960,11 @@
     const searchSubmit = document.getElementById("search-submit");
     const searchClear = document.getElementById("search-clear");
     const searchResults = document.getElementById("search-results");
+    const viewer = document.getElementById("viewer");
+    const viewerLayoutSelect = document.getElementById("viewer-layout");
+    const fullscreenToggle = document.getElementById("fullscreen-toggle");
+    const viewSplitter = document.getElementById("view-splitter");
+    const splitToggle = document.getElementById("split-toggle");
     const routeOriginInput = document.getElementById("route-origin-input");
     const routeDestinationInput = document.getElementById("route-destination-input");
     const routeOriginCurrentButton = document.getElementById("route-origin-current");
@@ -774,7 +1018,124 @@
     let mapSyncTimer = null;
     let roadviewSyncTimer = null;
     let roadviewStateTimer = null;
+    let stableRelayoutTimers = [];
+    let lastRoadviewSize = "";
     let programmaticRoadviewPanoId = null;
+    const viewerLayoutStorageKey = "kakao-qgis-viewer-layout";
+    const viewerSplitStorageKey = "kakao-qgis-viewer-split";
+
+    function savedViewerLayout() {
+      try {
+        return window.localStorage.getItem(viewerLayoutStorageKey) || "map-top";
+      } catch (_error) {
+        return "map-top";
+      }
+    }
+
+    function relayoutKakaoViews() {
+      const mapCenter = map ? map.getCenter() : null;
+      if (map && typeof map.relayout === "function") {
+        map.relayout();
+        if (mapCenter) {
+          map.setCenter(mapCenter);
+        }
+      }
+      if (roadview && typeof roadview.relayout === "function") {
+        const roadviewElement = document.getElementById("roadview");
+        const roadviewSize = `${roadviewElement.clientWidth}x${roadviewElement.clientHeight}`;
+        if (roadviewSize !== lastRoadviewSize) {
+          lastRoadviewSize = roadviewSize;
+          roadview.relayout();
+        }
+      }
+    }
+
+    function scheduleStableRelayout() {
+      stableRelayoutTimers.forEach((timer) => window.clearTimeout(timer));
+      stableRelayoutTimers = [0, 80, 220, 480].map((delay) => {
+        return window.setTimeout(relayoutKakaoViews, delay);
+      });
+    }
+
+    function isHorizontalSplitLayout(layout = viewerLayoutSelect.value) {
+      if (window.matchMedia("(max-width: 980px)").matches) {
+        return true;
+      }
+      return layout === "map-top" || layout === "roadview-top";
+    }
+
+    function savedViewerSplit() {
+      try {
+        const value = Number(window.localStorage.getItem(viewerSplitStorageKey));
+        return Number.isFinite(value) ? Math.min(70, Math.max(30, value)) : 50;
+      } catch (_error) {
+        return 50;
+      }
+    }
+
+    function applyViewerSplit(percent) {
+      const nextPercent = Math.min(70, Math.max(30, Number(percent) || 50));
+      viewer.style.setProperty("--split-primary-size", `${nextPercent}%`);
+      try {
+        window.localStorage.setItem(viewerSplitStorageKey, String(nextPercent));
+      } catch (_error) {
+        // Ignore private browsing or locked storage.
+      }
+      scheduleStableRelayout();
+    }
+
+    function updateSplitterState(layout = viewerLayoutSelect.value) {
+      const horizontal = isHorizontalSplitLayout(layout);
+      viewSplitter.setAttribute(
+        "aria-orientation",
+        horizontal ? "horizontal" : "vertical"
+      );
+      splitToggle.textContent = horizontal ? "⇅" : "⇄";
+    }
+
+    function swappedViewerLayout(layout = viewerLayoutSelect.value) {
+      const swaps = {
+        "map-top": "roadview-top",
+        "roadview-top": "map-top",
+        "map-left": "roadview-left",
+        "roadview-left": "map-left"
+      };
+      return swaps[layout] || "map-top";
+    }
+
+    async function toggleBrowserFullScreen() {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else if (viewer.requestFullscreen) {
+        await viewer.requestFullscreen();
+      }
+      scheduleStableRelayout();
+    }
+
+    function applyViewerLayout(layout) {
+      const allowedLayouts = new Set([
+        "map-top",
+        "roadview-top",
+        "map-left",
+        "roadview-left"
+      ]);
+      const nextLayout = allowedLayouts.has(layout) ? layout : "map-top";
+      viewer.classList.remove(
+        "layout-map-top",
+        "layout-roadview-top",
+        "layout-map-left",
+        "layout-roadview-left"
+      );
+      viewer.classList.add(`layout-${nextLayout}`);
+      viewerLayoutSelect.value = nextLayout;
+      updateSplitterState(nextLayout);
+      try {
+        window.localStorage.setItem(viewerLayoutStorageKey, nextLayout);
+      } catch (_error) {
+        // Ignore private browsing or locked storage.
+      }
+      scheduleStableRelayout();
+    }
 
     function setStatus(message) {
       document.getElementById("status").textContent = message;
@@ -1074,18 +1435,19 @@
       updateRoutePanelVisibility();
     }
 
-    function initQgisBridge() {
-      if (!window.qt || !window.qt.webChannelTransport || !window.QWebChannel) {
+    function connectQgisBridgeSignals() {
+      if (!qgisBridge) {
         return;
       }
 
-      new QWebChannel(window.qt.webChannelTransport, (channel) => {
-        qgisBridge = channel.objects.qgisBridge;
+      if (qgisBridge.routeStatusChanged) {
         qgisBridge.routeStatusChanged.connect((success, message) => {
           routeBusy = false;
           updateRouteControls();
           setStatus(message);
         });
+      }
+      if (qgisBridge.routeGuidanceChanged) {
         qgisBridge.routeGuidanceChanged.connect((payloadJson) => {
           try {
             renderRouteGuidance(JSON.parse(payloadJson));
@@ -1095,6 +1457,8 @@
             setStatus("경로 안내 목록을 표시하지 못했습니다.");
           }
         });
+      }
+      if (qgisBridge.routeHistoryChanged) {
         qgisBridge.routeHistoryChanged.connect((payloadJson) => {
           try {
             renderRouteHistory(JSON.parse(payloadJson));
@@ -1104,6 +1468,24 @@
             setStatus("경로 이력 목록을 표시하지 못했습니다.");
           }
         });
+      }
+    }
+
+    function initQgisBridge() {
+      if (window.kakaoExternalBridge) {
+        qgisBridge = window.kakaoExternalBridge;
+        connectQgisBridgeSignals();
+        setStatus("외부 브라우저 연동 모드로 QGIS와 연결했습니다.");
+        return;
+      }
+
+      if (!window.qt || !window.qt.webChannelTransport || !window.QWebChannel) {
+        return;
+      }
+
+      new QWebChannel(window.qt.webChannelTransport, (channel) => {
+        qgisBridge = channel.objects.qgisBridge;
+        connectQgisBridgeSignals();
       });
     }
 
@@ -1896,11 +2278,99 @@
 
       setStatus("Ready. QGIS, Kakao Map, and Roadview position sync is active.");
       moveViewer(defaultCenter.lon, defaultCenter.lat);
+      scheduleStableRelayout();
 
       if (pendingCenter) {
         moveViewer(pendingCenter.lon, pendingCenter.lat);
         pendingCenter = null;
       }
+    }
+
+    viewerLayoutSelect.addEventListener("change", () => {
+      applyViewerLayout(viewerLayoutSelect.value);
+    });
+
+    fullscreenToggle.addEventListener("click", async () => {
+      if (qgisBridge && typeof qgisBridge.toggleFullScreen === "function") {
+        await qgisBridge.toggleFullScreen();
+        scheduleStableRelayout();
+        return;
+      }
+
+      try {
+        await toggleBrowserFullScreen();
+      } catch (_error) {
+        setStatus("전체화면 전환을 사용할 수 없습니다.");
+      }
+    });
+
+    document.addEventListener("fullscreenchange", () => {
+      fullscreenToggle.textContent = document.fullscreenElement ? "⛶" : "⛶";
+      scheduleStableRelayout();
+    });
+
+    splitToggle.addEventListener("click", (event) => {
+      event.stopPropagation();
+      applyViewerLayout(swappedViewerLayout());
+    });
+
+    viewSplitter.addEventListener("pointerdown", (event) => {
+      if (event.target === splitToggle) {
+        return;
+      }
+      event.preventDefault();
+      viewSplitter.setPointerCapture(event.pointerId);
+
+      const updateSplitFromPointer = (pointerEvent) => {
+        const rect = viewer.getBoundingClientRect();
+        const horizontal = isHorizontalSplitLayout();
+        const headerHeight = searchForm.closest("header").offsetHeight;
+        const footerHeight = document.getElementById("status-bar").offsetHeight;
+        const available = horizontal
+          ? Math.max(1, rect.height - headerHeight - footerHeight)
+          : Math.max(1, rect.width);
+        const offset = horizontal
+          ? pointerEvent.clientY - rect.top - headerHeight
+          : pointerEvent.clientX - rect.left;
+        applyViewerSplit((offset / available) * 100);
+      };
+
+      const stopDrag = (pointerEvent) => {
+        viewSplitter.releasePointerCapture(pointerEvent.pointerId);
+        viewSplitter.removeEventListener("pointermove", updateSplitFromPointer);
+        viewSplitter.removeEventListener("pointerup", stopDrag);
+        viewSplitter.removeEventListener("pointercancel", stopDrag);
+        scheduleStableRelayout();
+      };
+
+      viewSplitter.addEventListener("pointermove", updateSplitFromPointer);
+      viewSplitter.addEventListener("pointerup", stopDrag);
+      viewSplitter.addEventListener("pointercancel", stopDrag);
+      updateSplitFromPointer(event);
+    });
+
+    window.addEventListener("resize", () => {
+      updateSplitterState();
+      scheduleStableRelayout();
+    });
+
+    window.addEventListener("focus", scheduleStableRelayout);
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) {
+        scheduleStableRelayout();
+      }
+    });
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", scheduleStableRelayout);
+      window.visualViewport.addEventListener("scroll", scheduleStableRelayout);
+    }
+
+    if (window.ResizeObserver) {
+      const viewerResizeObserver = new ResizeObserver(() => {
+        updateSplitterState();
+        scheduleStableRelayout();
+      });
+      viewerResizeObserver.observe(viewer);
     }
 
     document.getElementById("open-history").addEventListener("click", () => {
@@ -2212,6 +2682,8 @@
     };
 
     updateRouteVehicleSummary();
+    applyViewerSplit(savedViewerSplit());
+    applyViewerLayout(savedViewerLayout());
     initQgisBridge();
 
     if (!kakaoAppKey) {

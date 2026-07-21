@@ -25,7 +25,7 @@ from qgis.core import (
     QgsVectorLayer,
 )
 from qgis.PyQt.QtCore import QTimer, Qt, QUrl, QUrlQuery
-from qgis.PyQt.QtGui import QIcon
+from qgis.PyQt.QtGui import QDesktopServices, QIcon
 from qgis.PyQt.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 from qgis.PyQt.QtWidgets import QFileDialog, QInputDialog, QLineEdit, QMessageBox
 
@@ -46,6 +46,7 @@ from .compat import (
     save_style_to_database,
 )
 from .dock_widget import KakaoMapDockWidget
+from .external_bridge import KakaoExternalBridgeServer
 from .settings import (
     PLUGIN_DIR,
     environment_javascript_key,
@@ -127,6 +128,12 @@ class KakaoQgisBridgePlugin:
         self.reverse_sync_guard_timer = QTimer()
         self.reverse_sync_guard_timer.setSingleShot(True)
         self.reverse_sync_guard_timer.setInterval(600)
+        self.external_bridge_server = None
+        self.external_bridge_timer = QTimer()
+        self.external_bridge_timer.setInterval(120)
+        self.external_bridge_timer.timeout.connect(
+            self._process_external_bridge_events
+        )
 
     def initGui(self):
         self.action = QAction(
@@ -268,6 +275,8 @@ class KakaoQgisBridgePlugin:
             self.route_reply.deleteLater()
             self.route_reply = None
 
+        self._stop_external_bridge()
+
         if self.dock is not None:
             self.iface.removeDockWidget(self.dock)
             self.dock.deleteLater()
@@ -408,9 +417,117 @@ class KakaoQgisBridgePlugin:
         self.dock.routeHistoryLoadRequested.connect(self._load_route_history)
         self.dock.routeHistoryDeleteRequested.connect(self._delete_route_history)
         self.dock.routeHistoryExportRequested.connect(self._export_single_route_history)
+        self.dock.externalViewerRequested.connect(self._open_external_viewer)
         self.dock.visibilityChanged.connect(self._sync_action_state)
         self.iface.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.dock)
+        if self.dock.web_runtime_diagnostic:
+            self._ensure_external_bridge()
+            self.iface.messageBar().pushWarning(
+                "Kakao QGIS Bridge",
+                "Qt WebEngine/WebChannel 구성요소가 없어 외부 브라우저 모드로 전환합니다.",
+            )
+            QgsMessageLog.logMessage(
+                self.dock.web_runtime_diagnostic,
+                LOG_TAG,
+                MSG_WARNING,
+            )
         QTimer.singleShot(800, self._sync_route_history_panel)
+
+    def _ensure_external_bridge(self):
+        if self.external_bridge_server is None:
+            self.external_bridge_server = KakaoExternalBridgeServer()
+            try:
+                self.external_bridge_server.start()
+            except OSError as exc:
+                QgsMessageLog.logMessage(str(exc), LOG_TAG, MSG_WARNING)
+                self.iface.messageBar().pushWarning(
+                    "Kakao QGIS Bridge",
+                    "외부 브라우저 연동 서버를 시작하지 못했습니다. localhost:8081 포트 사용 여부를 확인하세요.",
+                )
+                self.external_bridge_server = None
+                return None
+
+        if not self.external_bridge_timer.isActive():
+            self.external_bridge_timer.start()
+        return self.external_bridge_server
+
+    def _stop_external_bridge(self):
+        self.external_bridge_timer.stop()
+        if self.external_bridge_server is not None:
+            self.external_bridge_server.stop()
+            self.external_bridge_server = None
+
+    def _open_external_viewer(self):
+        server = self._ensure_external_bridge()
+        if server is None:
+            return
+
+        self._schedule_canvas_sync()
+        QDesktopServices.openUrl(QUrl(server.url))
+
+    def _process_external_bridge_events(self):
+        if self.external_bridge_server is None:
+            return
+
+        for event in self.external_bridge_server.drain_events():
+            payload = event.get("payload", {})
+            event_type = event.get("type")
+            try:
+                if event_type == "move_center":
+                    self._handle_viewer_moved(
+                        float(payload.get("lon")),
+                        float(payload.get("lat")),
+                    )
+                elif event_type == "roadview_state":
+                    self._update_roadview_layer(
+                        float(payload.get("lon")),
+                        float(payload.get("lat")),
+                        float(payload.get("pan")),
+                        float(payload.get("tilt")),
+                        float(payload.get("zoom")),
+                        str(payload.get("pano_id", "")),
+                    )
+                elif event_type == "request_route":
+                    self._request_route(
+                        float(payload.get("origin_lon")),
+                        float(payload.get("origin_lat")),
+                        float(payload.get("destination_lon")),
+                        float(payload.get("destination_lat")),
+                        str(payload.get("priority", "")),
+                        str(payload.get("waypoints_json", "")),
+                        str(payload.get("avoid_json", "")),
+                        str(payload.get("vehicle_json", "")),
+                        str(payload.get("origin_label", "")),
+                        str(payload.get("destination_label", "")),
+                    )
+                elif event_type == "route_point":
+                    self._set_route_point(
+                        str(payload.get("role", "")),
+                        float(payload.get("lon")),
+                        float(payload.get("lat")),
+                    )
+                elif event_type == "clear_route_point":
+                    self._clear_route_point(str(payload.get("role", "")))
+                elif event_type == "clear_route_points":
+                    self._clear_route_points()
+                elif event_type == "select_route_guidance":
+                    self._focus_route_guidance(
+                        int(payload.get("sequence")),
+                        float(payload.get("lon")),
+                        float(payload.get("lat")),
+                    )
+                elif event_type == "select_route_history":
+                    self._focus_route_history(str(payload.get("history_id", "")))
+                elif event_type == "load_route_history":
+                    self._load_route_history(str(payload.get("history_id", "")))
+                elif event_type == "delete_route_history":
+                    self._delete_route_history(str(payload.get("history_id", "")))
+                elif event_type == "export_route_history":
+                    self._export_single_route_history(
+                        str(payload.get("history_id", ""))
+                    )
+            except (TypeError, ValueError) as exc:
+                QgsMessageLog.logMessage(str(exc), LOG_TAG, MSG_WARNING)
 
     def _sync_action_state(self, visible):
         if self.action is not None:
@@ -428,10 +545,16 @@ class KakaoQgisBridgePlugin:
             canvas.extentsChanged.connect(self._schedule_canvas_sync)
             canvas.destinationCrsChanged.connect(self._schedule_canvas_sync)
             self.canvas_sync_connected = True
-            self.iface.messageBar().pushInfo(
-                "Kakao QGIS Bridge",
-                "QGIS 이동은 Kakao에, Roadview 위치 이동은 QGIS에 양방향으로 반영됩니다.",
-            )
+            if self.dock is not None and self.dock.web_view is None:
+                self.iface.messageBar().pushInfo(
+                    "Kakao QGIS Bridge",
+                    "외부 브라우저 모드입니다. QGIS 중심 좌표를 기준으로 Kakao Map/Roadview를 열 수 있습니다.",
+                )
+            else:
+                self.iface.messageBar().pushInfo(
+                    "Kakao QGIS Bridge",
+                    "QGIS 이동은 Kakao에, Roadview 위치 이동은 QGIS에 양방향으로 반영됩니다.",
+                )
 
         self._schedule_canvas_sync()
 
@@ -471,6 +594,8 @@ class KakaoQgisBridgePlugin:
             return
 
         self.dock.set_center(lon, lat)
+        if self.external_bridge_server is not None:
+            self.external_bridge_server.set_center(lon, lat)
 
     def _handle_viewer_moved(self, lon, lat):
         if not math.isfinite(lon) or not math.isfinite(lat):
@@ -924,6 +1049,11 @@ class KakaoQgisBridgePlugin:
         )
         if self.dock is not None:
             self.dock.set_route_guidance(guidance_payload)
+        if self.external_bridge_server is not None:
+            self.external_bridge_server.emit_signal(
+                "routeGuidanceChanged",
+                json.dumps(guidance_payload, ensure_ascii=False),
+            )
 
         distance_text = f"{distance / 1000:.1f} km"
         duration_text = f"{max(1, round(duration / 60))}분"
@@ -1471,6 +1601,11 @@ class KakaoQgisBridgePlugin:
             return
         payload = self._route_history_payload(selected_history_id)
         self.dock.set_route_history(payload)
+        if self.external_bridge_server is not None:
+            self.external_bridge_server.emit_signal(
+                "routeHistoryChanged",
+                json.dumps(payload, ensure_ascii=False),
+            )
 
     def _route_history_payload(self, selected_history_id=None):
         if self.route_history_layer is None:
@@ -3528,6 +3663,12 @@ class KakaoQgisBridgePlugin:
     def _set_route_status(self, success, message):
         if self.dock is not None:
             self.dock.set_route_status(success, message)
+        if self.external_bridge_server is not None:
+            self.external_bridge_server.emit_signal(
+                "routeStatusChanged",
+                bool(success),
+                str(message),
+            )
 
     def _to_epsg_4326(self, point):
         canvas = self.iface.mapCanvas()

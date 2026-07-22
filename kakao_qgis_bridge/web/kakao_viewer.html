@@ -552,9 +552,46 @@
       overflow-y: auto;
     }
 
+    #route-guidance-overview {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 8px 10px;
+      border-bottom: 1px solid #e3e5e6;
+      background: #f8fafb;
+    }
+
+    .route-overview-point {
+      display: inline-flex;
+      min-width: 0;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 7px;
+      border: 1px solid #d4d9de;
+      border-radius: 999px;
+      background: #ffffff;
+      color: #1f2428;
+      font-size: 11px;
+      line-height: 1.25;
+    }
+
+    .route-overview-role {
+      flex: 0 0 auto;
+      font-weight: 700;
+    }
+
+    .route-overview-label {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
     #route-guidance-panel[data-collapsed="true"] #route-guidance-list,
+    #route-guidance-panel[data-collapsed="true"] #route-guidance-overview,
     #route-guidance-panel[data-collapsed="true"] #route-history-list,
     #route-guidance-list[hidden],
+    #route-guidance-overview[hidden],
     #route-history-list[hidden] {
       display: none;
     }
@@ -802,24 +839,39 @@
       line-height: 1.35;
     }
 
-    #open-history {
+    #open-history,
+    #open-external-viewer {
       flex: 0 0 auto;
       min-height: 30px;
       padding: 5px 10px;
-      border: 1px solid #c7a600;
       border-radius: 6px;
-      background: #fee500;
-      color: #191919;
       font: inherit;
       font-size: 12px;
       cursor: pointer;
+    }
+
+    #open-external-viewer {
+      border: 1px solid #aeb4b8;
+      background: #ffffff;
+      color: #1f2428;
+    }
+
+    #open-external-viewer:hover {
+      background: #edf2f7;
+    }
+
+    #open-history {
+      border: 1px solid #c7a600;
+      background: #fee500;
+      color: #191919;
     }
 
     #open-history:hover {
       background: #f4dc00;
     }
 
-    #open-history:disabled {
+    #open-history:disabled,
+    #open-external-viewer:disabled {
       cursor: default;
       opacity: 0.5;
     }
@@ -896,7 +948,8 @@
         grid-column: 2;
       }
 
-      #open-history {
+      #open-history,
+      #open-external-viewer {
         width: 100%;
       }
     }
@@ -990,6 +1043,7 @@
     <section id="roadview" aria-label="Kakao roadview"></section>
     <footer id="status-bar">
       <output id="status">Initializing Kakao Map viewer...</output>
+      <button id="open-external-viewer" type="button" disabled>외부 브라우저 연동창</button>
       <button id="open-history" type="button" disabled>카카오맵에서 과거 촬영 선택</button>
     </footer>
   </main>
@@ -1035,6 +1089,12 @@
     const routeGuidanceToggle = document.getElementById("route-guidance-toggle");
     const routeGuidanceList = document.getElementById("route-guidance-list");
     const routeHistoryList = document.getElementById("route-history-list");
+    const openExternalViewerButton = document.getElementById("open-external-viewer");
+    const routeGuidanceOverview = document.createElement("div");
+    routeGuidanceOverview.id = "route-guidance-overview";
+    routeGuidanceOverview.setAttribute("aria-label", "현재 경로 지점");
+    routeGuidanceOverview.hidden = true;
+    routeGuidancePanel.insertBefore(routeGuidanceOverview, routeGuidanceList);
     const maxRouteWaypoints = 5;
 
     let map = null;
@@ -1292,6 +1352,8 @@
       routeHistoryTab.classList.toggle("is-active", showingHistory);
       routeGuidanceTab.setAttribute("aria-selected", showingHistory ? "false" : "true");
       routeHistoryTab.setAttribute("aria-selected", showingHistory ? "true" : "false");
+      routeGuidanceOverview.hidden =
+        showingHistory || !routeGuidanceOverview.childElementCount;
       routeGuidanceList.hidden = showingHistory;
       routeHistoryList.hidden = !showingHistory;
       routeGuidanceSummaryText.textContent = showingHistory
@@ -1573,20 +1635,24 @@
     }
 
     function renderRouteGuidance(payload) {
-      const guides = Array.isArray(payload.guides) ? payload.guides : [];
+      const routePayload = payload || {};
+      const guides = Array.isArray(routePayload.guides) ? routePayload.guides : [];
       routeGuidance = guides;
       activeGuidanceSequence = null;
       routeGuidanceList.textContent = "";
-      renderRoutePath(payload.path);
+      renderRouteOverview(routePayload);
+      renderRoutePath(routePayload.path);
 
       if (!guides.length) {
         routeGuidanceSummaryText.dataset.guidanceSummary = "";
+        routeGuidanceOverview.textContent = "";
+        routeGuidanceOverview.hidden = true;
         updateRoutePanelVisibility();
         scheduleStableRelayout();
         return;
       }
 
-      const summary = payload.summary || {};
+      const summary = routePayload.summary || {};
       const vehicle = summary.vehicle || {};
       const vehicleTypeLabels = {
         1: "소형",
@@ -1657,6 +1723,7 @@
       if (!qgisBridge) {
         return;
       }
+      openExternalViewerButton.disabled = false;
 
       if (qgisBridge.routeStatusChanged) {
         qgisBridge.routeStatusChanged.connect((success, message) => {
@@ -1717,6 +1784,14 @@
         connectQgisBridgeSignals();
         updateRouteControls();
       });
+    }
+
+    function openExternalViewer() {
+      if (qgisBridge && typeof qgisBridge.openExternalViewer === "function") {
+        qgisBridge.openExternalViewer();
+        return;
+      }
+      setStatus("외부 브라우저 연동을 아직 사용할 수 없습니다.");
     }
 
     function currentMapCoordinate() {
@@ -2168,6 +2243,74 @@
         });
       }
       return fallback;
+    }
+
+    function routePointTooltip(location) {
+      if (
+        location &&
+        Number.isFinite(Number(location.lon)) &&
+        Number.isFinite(Number(location.lat))
+      ) {
+        return `${Number(location.lon).toFixed(7)}, ${Number(location.lat).toFixed(7)}`;
+      }
+      return "";
+    }
+
+    function renderRouteOverview(payload) {
+      const points = [];
+      if (payload && payload.origin) {
+        points.push({
+          role: "출발",
+          location: payload.origin,
+          fallback: "출발지"
+        });
+      }
+
+      const waypoints = payload && Array.isArray(payload.waypoints)
+        ? payload.waypoints
+        : [];
+      waypoints.forEach((waypoint, index) => {
+        points.push({
+          role: `경유 ${index + 1}`,
+          location: waypoint,
+          fallback: `경유지 ${index + 1}`
+        });
+      });
+
+      if (payload && payload.destination) {
+        points.push({
+          role: "도착",
+          location: payload.destination,
+          fallback: "도착지"
+        });
+      }
+
+      routeGuidanceOverview.textContent = "";
+      if (!points.length) {
+        routeGuidanceOverview.hidden = true;
+        return;
+      }
+
+      points.forEach((point) => {
+        const item = document.createElement("span");
+        item.className = "route-overview-point";
+        const tooltip = routePointTooltip(point.location);
+        if (tooltip) {
+          item.title = tooltip;
+        }
+
+        const role = document.createElement("span");
+        role.className = "route-overview-role";
+        role.textContent = point.role;
+
+        const label = document.createElement("span");
+        label.className = "route-overview-label";
+        label.textContent = routeInputLabel(point.location, point.fallback);
+
+        item.append(role, label);
+        routeGuidanceOverview.appendChild(item);
+      });
+      routeGuidanceOverview.hidden = activeRoutePanelTab === "history";
     }
 
     function applyLoadedRoutePoint(pointId, location) {
@@ -2624,6 +2767,8 @@
 
       qgisBridge.openKakaoRoadview(position.getLng(), position.getLat());
     });
+
+    openExternalViewerButton.addEventListener("click", openExternalViewer);
 
     searchForm.addEventListener("submit", (event) => {
       event.preventDefault();

@@ -144,6 +144,9 @@ EXTERNAL_BRIDGE_SCRIPT = r"""
     refreshRouteHistory() {
       post("/api/refresh-route-history", {});
     },
+    openExternalViewer() {
+      window.open("/", "_blank", "noopener");
+    },
     requestRoute(
       origin_lon,
       origin_lat,

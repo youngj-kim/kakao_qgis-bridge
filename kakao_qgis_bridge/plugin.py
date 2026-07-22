@@ -101,6 +101,7 @@ class KakaoQgisBridgePlugin:
     def __init__(self, iface):
         self.iface = iface
         self.action = None
+        self.external_viewer_action = None
         self.settings_action = None
         self.rest_settings_action = None
         self.load_history_action = None
@@ -148,6 +149,14 @@ class KakaoQgisBridgePlugin:
 
         self.iface.addToolBarIcon(self.action)
         self.iface.addPluginToMenu(MENU_NAME, self.action)
+
+        self.external_viewer_action = QAction(
+            QIcon.fromTheme("applications-internet"),
+            "외부 브라우저 연동 창 열기...",
+            self.iface.mainWindow(),
+        )
+        self.external_viewer_action.triggered.connect(self._open_external_viewer)
+        self.iface.addPluginToMenu(MENU_NAME, self.external_viewer_action)
 
         self.settings_action = QAction(
             QIcon.fromTheme("configure"),
@@ -232,6 +241,10 @@ class KakaoQgisBridgePlugin:
             self.iface.removePluginMenu(MENU_NAME, self.action)
             self.iface.removeToolBarIcon(self.action)
             self.action = None
+
+        if self.external_viewer_action is not None:
+            self.iface.removePluginMenu(MENU_NAME, self.external_viewer_action)
+            self.external_viewer_action = None
 
         if self.settings_action is not None:
             self.iface.removePluginMenu(MENU_NAME, self.settings_action)
@@ -468,6 +481,9 @@ class KakaoQgisBridgePlugin:
             self.external_bridge_server = None
 
     def _open_external_viewer(self):
+        if not self._ensure_api_key():
+            return
+
         server = self._ensure_external_bridge()
         if server is None:
             return
@@ -1051,6 +1067,24 @@ class KakaoQgisBridgePlugin:
                 "avoid": avoid_options,
                 "vehicle": vehicle_options,
             },
+            "origin": {
+                "label": origin_label,
+                "lon": origin[0],
+                "lat": origin[1],
+            },
+            "destination": {
+                "label": destination_label,
+                "lon": destination[0],
+                "lat": destination[1],
+            },
+            "waypoints": [
+                {
+                    "label": waypoint.get("label", ""),
+                    "lon": waypoint.get("lon"),
+                    "lat": waypoint.get("lat"),
+                }
+                for waypoint in waypoints
+            ],
             "path": self._route_path_payload(points),
             "guides": guides,
         }
@@ -2196,6 +2230,17 @@ class KakaoQgisBridgePlugin:
                 "avoid": avoid,
                 "vehicle": vehicle,
             },
+            "origin": {
+                "label": str(route_feature["origin_name"] or ""),
+                "lon": self._safe_float(route_feature["origin_lon"]),
+                "lat": self._safe_float(route_feature["origin_lat"]),
+            },
+            "destination": {
+                "label": str(route_feature["destination_name"] or ""),
+                "lon": self._safe_float(route_feature["destination_lon"]),
+                "lat": self._safe_float(route_feature["destination_lat"]),
+            },
+            "waypoints": self._waypoints_from_history(route_feature),
             "path": self._route_path_payload(
                 self._route_points_from_geometry(route_feature.geometry())
             ),

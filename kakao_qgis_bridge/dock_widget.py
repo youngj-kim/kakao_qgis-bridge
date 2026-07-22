@@ -94,6 +94,7 @@ class KakaoWebBridge(QObject):
     routeHistoryExportRequested = pyqtSignal(str)
     routeHistoriesExportRequested = pyqtSignal(str)
     routeHistoryRefreshRequested = pyqtSignal()
+    externalViewerRequested = pyqtSignal()
     fullScreenRequested = pyqtSignal()
 
     @pyqtSlot(float, float)
@@ -198,6 +199,10 @@ class KakaoWebBridge(QObject):
     @pyqtSlot()
     def refreshRouteHistory(self):
         self.routeHistoryRefreshRequested.emit()
+
+    @pyqtSlot()
+    def openExternalViewer(self):
+        self.externalViewerRequested.emit()
 
     @pyqtSlot()
     def toggleFullScreen(self):
@@ -348,6 +353,9 @@ class KakaoMapDockWidget(QDockWidget):
         )
         self.web_bridge.routeHistoryRefreshRequested.connect(
             self.routeHistoryRefreshRequested.emit
+        )
+        self.web_bridge.externalViewerRequested.connect(
+            self.externalViewerRequested.emit
         )
         self.web_bridge.fullScreenRequested.connect(self.toggle_full_screen)
 

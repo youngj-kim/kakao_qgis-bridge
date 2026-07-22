@@ -87,9 +87,12 @@ class KakaoWebBridge(QObject):
     routeGuidanceSelected = pyqtSignal(int, float, float)
     routeHistoryChanged = pyqtSignal(str)
     routeHistorySelected = pyqtSignal(str)
+    routeHistoryFileLoadRequested = pyqtSignal()
     routeHistoryLoadRequested = pyqtSignal(str)
     routeHistoryDeleteRequested = pyqtSignal(str)
+    routeHistoriesDeleteRequested = pyqtSignal()
     routeHistoryExportRequested = pyqtSignal(str)
+    routeHistoriesExportRequested = pyqtSignal(str)
     routeHistoryRefreshRequested = pyqtSignal()
     fullScreenRequested = pyqtSignal()
 
@@ -168,6 +171,10 @@ class KakaoWebBridge(QObject):
     def selectRouteHistory(self, history_id):
         self.routeHistorySelected.emit(history_id)
 
+    @pyqtSlot()
+    def loadRouteHistoryFile(self):
+        self.routeHistoryFileLoadRequested.emit()
+
     @pyqtSlot(str)
     def loadRouteHistory(self, history_id):
         self.routeHistoryLoadRequested.emit(history_id)
@@ -176,9 +183,17 @@ class KakaoWebBridge(QObject):
     def deleteRouteHistory(self, history_id):
         self.routeHistoryDeleteRequested.emit(history_id)
 
+    @pyqtSlot()
+    def deleteAllRouteHistories(self):
+        self.routeHistoriesDeleteRequested.emit()
+
     @pyqtSlot(str)
     def exportRouteHistory(self, history_id):
         self.routeHistoryExportRequested.emit(history_id)
+
+    @pyqtSlot(str)
+    def exportRouteHistories(self, history_ids_json):
+        self.routeHistoriesExportRequested.emit(history_ids_json)
 
     @pyqtSlot()
     def refreshRouteHistory(self):
@@ -200,9 +215,12 @@ class KakaoMapDockWidget(QDockWidget):
     routePointsCleared = pyqtSignal()
     routeGuidanceSelected = pyqtSignal(int, float, float)
     routeHistorySelected = pyqtSignal(str)
+    routeHistoryFileLoadRequested = pyqtSignal()
     routeHistoryLoadRequested = pyqtSignal(str)
     routeHistoryDeleteRequested = pyqtSignal(str)
+    routeHistoriesDeleteRequested = pyqtSignal()
     routeHistoryExportRequested = pyqtSignal(str)
+    routeHistoriesExportRequested = pyqtSignal(str)
     routeHistoryRefreshRequested = pyqtSignal()
     externalViewerRequested = pyqtSignal()
 
@@ -310,14 +328,23 @@ class KakaoMapDockWidget(QDockWidget):
         self.web_bridge.routeHistorySelected.connect(
             self.routeHistorySelected.emit
         )
+        self.web_bridge.routeHistoryFileLoadRequested.connect(
+            self.routeHistoryFileLoadRequested.emit
+        )
         self.web_bridge.routeHistoryLoadRequested.connect(
             self.routeHistoryLoadRequested.emit
         )
         self.web_bridge.routeHistoryDeleteRequested.connect(
             self.routeHistoryDeleteRequested.emit
         )
+        self.web_bridge.routeHistoriesDeleteRequested.connect(
+            self.routeHistoriesDeleteRequested.emit
+        )
         self.web_bridge.routeHistoryExportRequested.connect(
             self.routeHistoryExportRequested.emit
+        )
+        self.web_bridge.routeHistoriesExportRequested.connect(
+            self.routeHistoriesExportRequested.emit
         )
         self.web_bridge.routeHistoryRefreshRequested.connect(
             self.routeHistoryRefreshRequested.emit

@@ -123,14 +123,23 @@ EXTERNAL_BRIDGE_SCRIPT = r"""
     selectRouteHistory(history_id) {
       post("/api/select-route-history", { history_id });
     },
+    loadRouteHistoryFile() {
+      post("/api/load-route-history-file", {});
+    },
     loadRouteHistory(history_id) {
       post("/api/load-route-history", { history_id });
     },
     deleteRouteHistory(history_id) {
       post("/api/delete-route-history", { history_id });
     },
+    deleteAllRouteHistories() {
+      post("/api/delete-all-route-histories", {});
+    },
     exportRouteHistory(history_id) {
       post("/api/export-route-history", { history_id });
+    },
+    exportRouteHistories(history_ids_json) {
+      post("/api/export-route-histories", { history_ids_json });
     },
     refreshRouteHistory() {
       post("/api/refresh-route-history", {});

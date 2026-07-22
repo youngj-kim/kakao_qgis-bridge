@@ -416,9 +416,18 @@ class KakaoQgisBridgePlugin:
         self.dock.routePointsCleared.connect(self._clear_route_points)
         self.dock.routeGuidanceSelected.connect(self._focus_route_guidance)
         self.dock.routeHistorySelected.connect(self._focus_route_history)
+        self.dock.routeHistoryFileLoadRequested.connect(
+            self._load_route_history_file
+        )
         self.dock.routeHistoryLoadRequested.connect(self._load_route_history)
         self.dock.routeHistoryDeleteRequested.connect(self._delete_route_history)
+        self.dock.routeHistoriesDeleteRequested.connect(
+            self._delete_all_route_histories
+        )
         self.dock.routeHistoryExportRequested.connect(self._export_single_route_history)
+        self.dock.routeHistoriesExportRequested.connect(
+            self._export_selected_route_histories
+        )
         self.dock.routeHistoryRefreshRequested.connect(
             self._refresh_route_history_panel
         )
@@ -519,13 +528,21 @@ class KakaoQgisBridgePlugin:
                     )
                 elif event_type == "select_route_history":
                     self._focus_route_history(str(payload.get("history_id", "")))
+                elif event_type == "load_route_history_file":
+                    self._load_route_history_file()
                 elif event_type == "load_route_history":
                     self._load_route_history(str(payload.get("history_id", "")))
                 elif event_type == "delete_route_history":
                     self._delete_route_history(str(payload.get("history_id", "")))
+                elif event_type == "delete_all_route_histories":
+                    self._delete_all_route_histories()
                 elif event_type == "export_route_history":
                     self._export_single_route_history(
                         str(payload.get("history_id", ""))
+                    )
+                elif event_type == "export_route_histories":
+                    self._export_selected_route_histories(
+                        str(payload.get("history_ids_json", "[]"))
                     )
                 elif event_type == "refresh_route_history":
                     self._refresh_route_history_panel()
@@ -1788,9 +1805,119 @@ class KakaoQgisBridgePlugin:
             "선택한 경로 이력을 삭제했습니다.",
         )
 
+    def _delete_all_route_histories(self):
+        if (
+            self.route_history_layer is None
+            or self.route_history_layer.featureCount() == 0
+        ):
+            return
+
+        answer = QMessageBox.question(
+            self.iface.mainWindow(),
+            "Kakao QGIS Bridge",
+            "현재 세션의 모든 경로 이력을 삭제할까요?",
+            MSGBOX_YES | MSGBOX_NO,
+            MSGBOX_NO,
+        )
+        if answer != MSGBOX_YES:
+            return
+
+        if self.route_history_layer is not None:
+            route_ids = [feature.id() for feature in self.route_history_layer.getFeatures()]
+            if route_ids:
+                self.route_history_layer.dataProvider().deleteFeatures(route_ids)
+                self.route_history_layer.updateExtents()
+
+        if self.guidance_history_layer is not None:
+            guidance_ids = [
+                feature.id()
+                for feature in self.guidance_history_layer.getFeatures()
+            ]
+            if guidance_ids:
+                self.guidance_history_layer.dataProvider().deleteFeatures(
+                    guidance_ids
+                )
+                self.guidance_history_layer.updateExtents()
+
+        self._clear_current_route_display()
+        self._sync_route_history_panel()
+        self._update_history_action_state()
+        self.iface.messageBar().pushInfo(
+            "Kakao QGIS Bridge",
+            "전체 경로 이력을 삭제했습니다.",
+        )
+
     def _export_single_route_history(self, history_id):
         route_feature = self._route_feature_for_history(history_id)
         if route_feature is None:
+            return
+
+        self._export_route_histories(
+            [history_id],
+            self._history_export_basename(route_feature),
+            "선택 경로 이력 내보내기",
+            "선택 이력 내보내기",
+        )
+
+    def _export_selected_route_histories(self, history_ids_json):
+        try:
+            history_ids = json.loads(history_ids_json or "[]")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            history_ids = []
+
+        history_ids = [
+            str(history_id)
+            for history_id in history_ids
+            if str(history_id).strip()
+        ]
+        if not history_ids:
+            self.iface.messageBar().pushWarning(
+                "Kakao QGIS Bridge",
+                "내보낼 경로 이력을 선택하세요.",
+            )
+            return
+
+        self._export_route_histories(
+            history_ids,
+            self._selected_history_export_basename(len(history_ids)),
+            "선택 경로 이력 다수 내보내기",
+            "선택 이력 다수 내보내기",
+        )
+
+    def _export_route_histories(
+        self,
+        history_ids,
+        base_name,
+        dialog_title,
+        success_label,
+    ):
+        if self.route_history_layer is None:
+            return
+
+        unique_history_ids = []
+        seen_history_ids = set()
+        for history_id in history_ids:
+            if history_id in seen_history_ids:
+                continue
+            seen_history_ids.add(history_id)
+            unique_history_ids.append(history_id)
+
+        route_features = []
+        guidance_features = []
+        for history_id in unique_history_ids:
+            route_feature = self._route_feature_for_history(history_id)
+            if route_feature is None:
+                continue
+            route_features.append(QgsFeature(route_feature))
+            guidance_features.extend(
+                self._guidance_features_for_history(history_id)
+            )
+
+        if not route_features:
+            self.iface.messageBar().pushWarning(
+                "Kakao QGIS Bridge",
+                "내보낼 수 있는 경로 이력이 없습니다.",
+            )
             return
 
         formats = [
@@ -1810,7 +1937,6 @@ class KakaoQgisBridgePlugin:
         if not accepted:
             return
 
-        base_name = self._history_export_basename(route_feature)
         project_home = QgsProject.instance().homePath()
         extension = {
             formats[0]: ".gpkg",
@@ -1826,7 +1952,7 @@ class KakaoQgisBridgePlugin:
         )
         filename, _selected_filter = QFileDialog.getSaveFileName(
             self.iface.mainWindow(),
-            "선택 경로 이력 내보내기",
+            dialog_title,
             default_path,
             selected_format,
         )
@@ -1835,11 +1961,10 @@ class KakaoQgisBridgePlugin:
 
         route_layer = self._single_history_layer(
             self.route_history_layer,
-            [route_feature],
+            route_features,
             "LineString",
             "Selected Kakao Route History",
         )
-        guidance_features = self._guidance_features_for_history(history_id)
         guidance_layer = self._single_history_layer(
             self.guidance_history_layer,
             guidance_features,
@@ -1917,14 +2042,14 @@ class KakaoQgisBridgePlugin:
             QMessageBox.critical(
                 self.iface.mainWindow(),
                 "Kakao QGIS Bridge",
-                f"선택 경로 이력 내보내기에 실패했습니다.\n\n{exc}",
+                f"{dialog_title}에 실패했습니다.\n\n{exc}",
             )
             return
 
         self.iface.messageBar().pushSuccess(
             "Kakao QGIS Bridge",
             (
-                f"선택 이력 내보내기 완료: 경로 {route_count}건, "
+                f"{success_label} 완료: 경로 {route_count}건, "
                 f"안내 {guidance_count}건 ({output_parent})"
             ),
         )
@@ -2040,6 +2165,11 @@ class KakaoQgisBridgePlugin:
         while "__" in safe:
             safe = safe.replace("__", "_")
         return safe[:120].strip("_") or f"kakao_route_{date_part}"
+
+    @staticmethod
+    def _selected_history_export_basename(history_count):
+        date_part = datetime.now().strftime("%Y%m%d")
+        return f"kakao_routes_{date_part}_selected_{history_count}"
 
     def _route_guidance_payload_from_history(self, route_feature, guide_features):
         vehicle = {

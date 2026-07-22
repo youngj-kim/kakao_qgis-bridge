@@ -581,7 +581,33 @@
     }
 
     .history-item {
-      grid-template-columns: minmax(0, 1fr);
+      grid-template-columns: 26px minmax(0, 1fr);
+    }
+
+    .history-bulk-actions {
+      display: flex;
+      min-height: 38px;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-bottom: 1px solid #e3e5e6;
+      background: #f8fafb;
+    }
+
+    .history-bulk-summary {
+      flex: 1;
+      min-width: 0;
+      color: #3f474d;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .history-select {
+      width: 16px;
+      height: 16px;
+      margin: 0;
+      accent-color: #2b5f9e;
+      cursor: pointer;
     }
 
     .history-actions {
@@ -590,6 +616,7 @@
       margin-top: 6px;
     }
 
+    .history-bulk-actions button,
     .history-actions button {
       min-height: 26px;
       padding: 3px 8px;
@@ -600,6 +627,15 @@
       font: inherit;
       font-size: 11px;
       cursor: pointer;
+    }
+
+    .history-bulk-actions button:disabled {
+      cursor: default;
+      opacity: 0.5;
+    }
+
+    .history-content {
+      min-width: 0;
     }
 
     .history-actions button:hover,
@@ -1019,6 +1055,7 @@
     let routeGuidance = [];
     let routeHistory = [];
     let routePolyline = null;
+    let selectedRouteHistoryIds = new Set();
     let activeGuidanceSequence = null;
     let activeRouteHistoryId = "";
     let activeRoutePanelTab = "guidance";
@@ -1244,6 +1281,8 @@
         !routeGuidance.length &&
         !routeHistory.length &&
         activeRoutePanelTab !== "history";
+      updateSplitterState();
+      scheduleStableRelayout();
     }
 
     function activateRoutePanelTab(tabName) {
@@ -1272,6 +1311,95 @@
       setStatus(`${history.origin_name || "출발지"} → ${history.destination_name || "도착지"}`);
     }
 
+    function selectedRouteHistoriesFromCurrentList() {
+      const availableIds = new Set(routeHistory.map((history) => history.history_id));
+      selectedRouteHistoryIds = new Set(
+        [...selectedRouteHistoryIds].filter((historyId) => availableIds.has(historyId))
+      );
+      return [...selectedRouteHistoryIds];
+    }
+
+    function createHistoryBulkActions() {
+      const selectedIds = selectedRouteHistoriesFromCurrentList();
+      const controls = document.createElement("div");
+      controls.className = "history-bulk-actions";
+
+      const summary = document.createElement("span");
+      summary.className = "history-bulk-summary";
+      summary.textContent = selectedIds.length
+        ? `선택 ${selectedIds.length}건`
+        : `경로 이력 ${routeHistory.length}건`;
+
+      const loadHistoryButton = document.createElement("button");
+      loadHistoryButton.type = "button";
+      loadHistoryButton.textContent = "이력 불러오기";
+      loadHistoryButton.addEventListener("click", () => {
+        if (!qgisBridge || typeof qgisBridge.loadRouteHistoryFile !== "function") {
+          setStatus("경로 이력 불러오기 기능을 사용할 수 없습니다.");
+          return;
+        }
+        qgisBridge.loadRouteHistoryFile();
+      });
+
+      const selectAllButton = document.createElement("button");
+      selectAllButton.type = "button";
+      selectAllButton.textContent = selectedIds.length === routeHistory.length && routeHistory.length
+        ? "전체 해제"
+        : "전체 선택";
+      selectAllButton.disabled = !routeHistory.length;
+      selectAllButton.addEventListener("click", () => {
+        if (selectedRouteHistoryIds.size === routeHistory.length) {
+          selectedRouteHistoryIds.clear();
+        } else {
+          selectedRouteHistoryIds = new Set(
+            routeHistory.map((history) => history.history_id).filter(Boolean)
+          );
+        }
+        renderRouteHistory({
+          selected_history_id: activeRouteHistoryId,
+          items: routeHistory
+        });
+      });
+
+      const deleteAllButton = document.createElement("button");
+      deleteAllButton.type = "button";
+      deleteAllButton.textContent = "전체 삭제";
+      deleteAllButton.disabled = !routeHistory.length;
+      deleteAllButton.addEventListener("click", () => {
+        if (!qgisBridge || typeof qgisBridge.deleteAllRouteHistories !== "function") {
+          setStatus("전체 이력 삭제 기능을 사용할 수 없습니다.");
+          return;
+        }
+        qgisBridge.deleteAllRouteHistories();
+      });
+
+      const exportSelectedButton = document.createElement("button");
+      exportSelectedButton.type = "button";
+      exportSelectedButton.textContent = "선택 저장";
+      exportSelectedButton.disabled = !selectedIds.length;
+      exportSelectedButton.addEventListener("click", () => {
+        const historyIds = selectedRouteHistoriesFromCurrentList();
+        if (!historyIds.length) {
+          setStatus("저장할 경로 이력을 선택하세요.");
+          return;
+        }
+        if (!qgisBridge || typeof qgisBridge.exportRouteHistories !== "function") {
+          setStatus("선택 이력 저장 기능을 사용할 수 없습니다.");
+          return;
+        }
+        qgisBridge.exportRouteHistories(JSON.stringify(historyIds));
+      });
+
+      controls.append(
+        summary,
+        loadHistoryButton,
+        selectAllButton,
+        deleteAllButton,
+        exportSelectedButton
+      );
+      return controls;
+    }
+
     function renderRouteHistory(payload) {
       const items = Array.isArray(payload.items) ? payload.items : [];
       const previousHistoryId = activeRouteHistoryId;
@@ -1284,6 +1412,8 @@
       if (previousHistoryId && !activeRouteHistoryId) {
         renderRouteGuidance({ history_id: "", summary: {}, path: [], guides: [] });
       }
+
+      routeHistoryList.appendChild(createHistoryBulkActions());
 
       if (!items.length) {
         const empty = document.createElement("div");
@@ -1300,6 +1430,30 @@
         if (history.history_id === activeRouteHistoryId) {
           item.classList.add("is-active");
         }
+
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.className = "history-select";
+        checkbox.title = "저장할 이력 선택";
+        checkbox.setAttribute("aria-label", "저장할 이력 선택");
+        checkbox.checked = selectedRouteHistoryIds.has(history.history_id);
+        checkbox.addEventListener("click", (event) => {
+          event.stopPropagation();
+        });
+        checkbox.addEventListener("change", () => {
+          if (checkbox.checked) {
+            selectedRouteHistoryIds.add(history.history_id);
+          } else {
+            selectedRouteHistoryIds.delete(history.history_id);
+          }
+          renderRouteHistory({
+            selected_history_id: activeRouteHistoryId,
+            items: routeHistory
+          });
+        });
+
+        const content = document.createElement("span");
+        content.className = "history-content";
 
         const title = document.createElement("span");
         title.className = "history-title";
@@ -1341,7 +1495,8 @@
           actions.appendChild(button);
         });
 
-        item.append(title, summary, options, actions);
+        content.append(title, summary, options, actions);
+        item.append(checkbox, content);
         item.addEventListener("click", () => selectRouteHistory(history, item));
         item.addEventListener("keydown", (event) => {
           if (event.key === "Enter" || event.key === " ") {
@@ -1357,6 +1512,7 @@
       }
       updateRouteControls();
       updateRoutePanelVisibility();
+      scheduleStableRelayout();
     }
 
     function selectRouteGuidance(guide, item) {
@@ -1426,6 +1582,7 @@
       if (!guides.length) {
         routeGuidanceSummaryText.dataset.guidanceSummary = "";
         updateRoutePanelVisibility();
+        scheduleStableRelayout();
         return;
       }
 
@@ -1493,6 +1650,7 @@
 
       activateRoutePanelTab("guidance");
       updateRoutePanelVisibility();
+      scheduleStableRelayout();
     }
 
     function connectQgisBridgeSignals() {
@@ -2443,7 +2601,16 @@
         updateSplitterState();
         scheduleStableRelayout();
       });
-      viewerResizeObserver.observe(viewer);
+      [
+        viewer,
+        document.getElementById("search-panel"),
+        document.getElementById("map"),
+        document.getElementById("roadview")
+      ].forEach((element) => {
+        if (element) {
+          viewerResizeObserver.observe(element);
+        }
+      });
     }
 
     document.getElementById("open-history").addEventListener("click", () => {

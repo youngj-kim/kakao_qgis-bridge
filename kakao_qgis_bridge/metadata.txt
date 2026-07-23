@@ -9,6 +9,7 @@ email=contact@yjkim.dev
 about=Shows Kakao Maps JavaScript API content inside a QGIS dock widget and synchronizes QGIS, Kakao Map, and Roadview in both directions. Includes Local place/address search and Roadview position/direction display. Kakao tile URLs are not extracted or used as XYZ/TMS layers.
 category=Web
 icon=icon.png
+license=GPL-2.0-or-later
 tracker=https://github.com/youngj-kim/kakao_qgis-bridge/issues
 repository=https://github.com/youngj-kim/kakao_qgis-bridge
 homepage=https://github.com/youngj-kim/kakao_qgis-bridge

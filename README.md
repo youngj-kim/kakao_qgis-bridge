@@ -4,6 +4,42 @@ QGIS 3.34 LTR 이상과 QGIS 4.0 / Qt 6 환경을 함께 고려하는 Python 플
 
 이 플러그인은 Kakao 지도 타일 URL을 추출하거나 QGIS XYZ/TMS 배경지도로 등록하지 않습니다. 대신 QGIS Dock Widget 안의 `QWebEngineView`에서 Kakao Maps JavaScript API를 로드하고, QGIS 기본 탐색 기능으로 변경된 캔버스 중심 좌표를 EPSG:4326으로 변환해 Kakao Map과 Roadview 중심으로 전달합니다.
 
+![Kakao Map / Roadview dock](docs/screenshots/02-dock-basic.png)
+
+## 화면 예시
+
+자세한 화면별 사용 흐름은 [docs/usage.md](docs/usage.md)를 참고하세요.
+
+### 위치 동기화와 검색
+
+QGIS 캔버스, Kakao Map, Roadview는 같은 중심 좌표를 기준으로 동기화됩니다. Kakao 지도나 Roadview에서 위치를 바꾸면 QGIS 캔버스와 Roadview 위치 레이어도 함께 갱신됩니다.
+
+![QGIS and Kakao position sync](docs/screenshots/03-position-sync.png)
+
+Kakao Local 검색으로 장소명과 주소를 찾고, 검색 결과를 선택해 QGIS와 Kakao Map/Roadview를 같은 위치로 이동할 수 있습니다.
+
+![Kakao Local search results](docs/screenshots/04-local-search_search_input.png)
+
+### 경로 탐색과 안내
+
+출발지, 도착지, 경유지, 경로 유형, 회피 옵션, 차량 설정을 입력해 Kakao Mobility 자동차 경로를 생성합니다. 결과는 QGIS 임시 경로 레이어, 출발지·도착지·경유지 핀, 순서별 안내 포인트로 표시됩니다.
+
+![Kakao Mobility route result](docs/screenshots/07-route-result.png)
+
+안내 목록에서 항목을 선택하면 Kakao Map/Roadview가 해당 안내 지점으로 이동하고 QGIS에서도 대응 피처가 선택됩니다.
+
+![Route guidance selection](docs/screenshots/08-guidance-selection.png)
+
+### 이력과 외부 연동
+
+경로 검색 결과는 현재 세션의 이력 탭에 누적됩니다. 이력은 다시 불러오거나 삭제하거나 GeoPackage, GeoJSON, Shapefile, GPX로 내보낼 수 있습니다.
+
+![Route history panel](docs/screenshots/09-route-history.png)
+
+QGIS 3처럼 Qt WebEngine을 사용할 수 없는 환경에서는 외부 브라우저 연동 모드로 같은 Kakao Viewer를 사용할 수 있습니다.
+
+![External browser integration](docs/screenshots/10-external-browser.png)
+
 ## 현재 단계
 
 - Plugin Builder 없는 최소 QGIS 플러그인 구조
@@ -31,6 +67,8 @@ QGIS 3.34 LTR 이상과 QGIS 4.0 / Qt 6 환경을 함께 고려하는 Python 플
 - 차종·유종·하이패스 차량 설정
 - 회전·직진·진출입 순서별 안내를 QGIS 포인트 레이어와 Dock 목록으로 표시
 - 안내 패널에서 현재 경로의 출발지·경유지·도착지 개요 표시
+- 경로 이력 GeoPackage 저장, GeoJSON/Shapefile/GPX 내보내기와 이력 불러오기
+- GPX 트랙·루트·웨이포인트 레이어를 QML 스타일과 함께 불러오기
 
 ## 폴더 구조
 
@@ -45,6 +83,9 @@ kakao_qgis_bridge/
   settings.example.json
   web/
     kakao_viewer.html
+docs/
+  usage.md
+  screenshots/
 README.md
 ```
 

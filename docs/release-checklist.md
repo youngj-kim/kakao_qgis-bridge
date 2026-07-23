@@ -5,64 +5,64 @@ plugin repository.
 
 ## Repository
 
-- [ ] Confirm the GitHub repository is public.
-- [ ] Confirm `metadata.txt` links are reachable:
-  - [ ] `homepage`
-  - [ ] `repository`
-  - [ ] `tracker`
-- [ ] Confirm `README.md` explains installation, API keys, usage, and limits.
-- [ ] Confirm `LICENSE` is present in the repository root.
-- [ ] Confirm `kakao_qgis_bridge/LICENSE` is included in the plugin package.
-- [ ] Confirm no API keys, account details, or local user paths are committed.
+- [x] Confirm the GitHub repository is public.
+- [x] Confirm `metadata.txt` links are reachable:
+  - [x] `homepage`
+  - [x] `repository`
+  - [x] `tracker`
+- [x] Confirm `README.md` explains installation, API keys, usage, and limits.
+- [x] Confirm `LICENSE` is present in the repository root.
+- [x] Confirm `kakao_qgis_bridge/LICENSE` is included in the plugin package.
+- [x] Confirm no API keys, account details, or local user paths are committed.
 
 ## Metadata
 
-- [ ] `name` is final.
-- [ ] `version` is updated.
-- [ ] `qgisMinimumVersion` is correct.
-- [ ] `qgisMaximumVersion` is correct.
-- [ ] `description` is short and accurate.
-- [ ] `about` mentions Kakao API requirements and restrictions.
-- [ ] `license=GPL-2.0-or-later` is present.
-- [ ] `experimental=True` or `experimental=False` is intentional.
+- [x] `name` is final.
+- [x] `version` is updated.
+- [x] `qgisMinimumVersion` is correct.
+- [x] `qgisMaximumVersion` is correct.
+- [x] `description` is short and accurate.
+- [x] `about` mentions Kakao API requirements and restrictions.
+- [x] `license=GPL-2.0-or-later` is present.
+- [x] `experimental=True` or `experimental=False` is intentional.
 
 ## Screenshots and Docs
 
-- [ ] Add screenshots under `docs/screenshots/`.
-- [ ] Review screenshots for API keys, account information, and sensitive locations.
-- [ ] Add representative screenshots to `README.md`.
-- [ ] Move detailed walkthrough screenshots to `docs/usage.md` if README becomes too long.
+- [x] Add screenshots under `docs/screenshots/`.
+- [x] Review screenshots for API keys, account information, and sensitive locations.
+- [x] Add representative screenshots to `README.md`.
+- [x] Move detailed walkthrough screenshots to `docs/usage.md` if README becomes too long.
 
 ## Functional Smoke Test
 
-- [ ] Install from ZIP in a clean QGIS profile.
-- [ ] Enable the plugin from QGIS Plugin Manager.
-- [ ] Open `Kakao Map / Roadview`.
-- [ ] Set Kakao JavaScript API key.
-- [ ] Confirm QGIS canvas center syncs to Kakao Map and Roadview.
-- [ ] Confirm Kakao Map drag syncs back to QGIS.
-- [ ] Confirm Roadview movement updates the QGIS roadview position layer.
-- [ ] Confirm Local place/address search works.
-- [ ] Set Kakao REST API key.
-- [ ] Create a route with origin and destination.
-- [ ] Create a route with at least one waypoint.
-- [ ] Confirm route, route points, and guidance layers are created.
-- [ ] Confirm guidance list item selection focuses the matching QGIS feature.
-- [ ] Save route history to GeoPackage.
-- [ ] Load route history from GeoPackage.
-- [ ] Export route history to GeoJSON.
-- [ ] Export route history to Shapefile.
-- [ ] Export route history to GPX.
-- [ ] Load GPX with sidecar QML styles.
-- [ ] Test external browser integration mode when available.
+- [x] Install/use in the active QGIS development profile.
+- [x] Enable the plugin from QGIS Plugin Manager.
+- [x] Open `Kakao Map / Roadview`.
+- [x] Set Kakao JavaScript API key.
+- [x] Confirm QGIS canvas center syncs to Kakao Map and Roadview.
+- [x] Confirm Kakao Map drag syncs back to QGIS.
+- [x] Confirm Roadview movement updates the QGIS roadview position layer.
+- [x] Confirm Local place/address search works.
+- [x] Set Kakao REST API key.
+- [x] Create a route with origin and destination.
+- [x] Create a route with at least one waypoint.
+- [x] Confirm route, route points, and guidance layers are created.
+- [x] Confirm guidance list item selection focuses the matching QGIS feature.
+- [x] Save route history to GeoPackage.
+- [x] Load route history from GeoPackage.
+- [x] Export route history to GeoJSON.
+- [x] Export route history to Shapefile.
+- [x] Export route history to GPX.
+- [x] Load GPX with sidecar QML styles.
+- [x] Test external browser integration mode when available.
 
 ## Package
 
-- [ ] ZIP contains a single top-level `kakao_qgis_bridge/` folder.
-- [ ] ZIP excludes `.git`, `.agents`, `.codex`, `__pycache__`, `.pytest_cache`, and local settings.
-- [ ] ZIP excludes `kakao_qgis_bridge/settings.json`.
-- [ ] ZIP excludes generated test/output files.
-- [ ] ZIP size is below the QGIS repository package limit.
+- [x] ZIP contains a single top-level `kakao_qgis_bridge/` folder.
+- [x] ZIP excludes `.git`, `.agents`, `.codex`, `__pycache__`, `.pytest_cache`, and local settings.
+- [x] ZIP excludes `kakao_qgis_bridge/settings.json`.
+- [x] ZIP excludes generated test/output files.
+- [x] ZIP size is below the QGIS repository package limit.
 - [ ] Source code in the ZIP matches the public GitHub repository.
 
 ## Upload

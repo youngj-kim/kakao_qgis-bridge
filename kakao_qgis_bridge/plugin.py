@@ -4,8 +4,17 @@ from base64 import b64encode
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
-from xml.etree import ElementTree as ET
 from uuid import uuid4
+
+try:
+    from defusedxml import defuse_stdlib
+except ImportError:
+    defuse_stdlib = None
+
+if defuse_stdlib is not None:
+    defuse_stdlib()
+
+from xml.etree import ElementTree as ET
 
 from qgis.core import (
     Qgis,

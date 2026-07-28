@@ -33,29 +33,27 @@ def _record_import_error(component, primary_error, fallback_error):
 
 try:
     from qgis.PyQt.QtWebChannel import QWebChannel
-except ImportError as primary_error:
-    try:
-        from PyQt5.QtWebChannel import QWebChannel
-    except ImportError as fallback_error:
-        QWebChannel = None
-        _record_import_error(
-            "Qt WebChannel",
-            primary_error,
-            fallback_error,
-        )
+except ImportError as error:
+    QWebChannel = None
+    WEB_RUNTIME_IMPORT_ERRORS.append(
+        {
+            "component": "Qt WebChannel",
+            "primary_error": str(error),
+            "fallback_error": "",
+        }
+    )
 
 try:
     from qgis.PyQt.QtWebEngineWidgets import QWebEngineView
-except ImportError as primary_error:
-    try:
-        from PyQt5.QtWebEngineWidgets import QWebEngineView
-    except ImportError as fallback_error:
-        QWebEngineView = None
-        _record_import_error(
-            "Qt WebEngine",
-            primary_error,
-            fallback_error,
-        )
+except ImportError as error:
+    QWebEngineView = None
+    WEB_RUNTIME_IMPORT_ERRORS.append(
+        {
+            "component": "Qt WebEngine",
+            "primary_error": str(error),
+            "fallback_error": "",
+        }
+    )
 
 from .settings import PLUGIN_DIR, kakao_javascript_key, kakao_map_base_url
 

@@ -6,16 +6,6 @@ from functools import lru_cache
 from pathlib import Path
 from uuid import uuid4
 
-try:
-    from defusedxml import defuse_stdlib
-except ImportError:
-    defuse_stdlib = None
-
-if defuse_stdlib is not None:
-    defuse_stdlib()
-
-from xml.etree import ElementTree as ET
-
 from qgis.core import (
     Qgis,
     QgsCategorizedSymbolRenderer,
@@ -73,6 +63,61 @@ from .settings import (
 
 MENU_NAME = "&Kakao QGIS Bridge"
 LOG_TAG = "Kakao QGIS Bridge"
+
+
+class GpxWriter:
+    def __init__(self):
+        self.lines = []
+        self.level = 0
+
+    def document(self):
+        body = "\n".join(self.lines)
+        return f'<?xml version="1.0" encoding="utf-8"?>\n{body}\n'
+
+    def start(self, tag, attrs=None):
+        self.lines.append(
+            f"{self._indent()}<{tag}{self._attrs(attrs)}>"
+        )
+        self.level += 1
+
+    def end(self, tag):
+        self.level = max(0, self.level - 1)
+        self.lines.append(f"{self._indent()}</{tag}>")
+
+    def empty(self, tag, attrs=None):
+        self.lines.append(
+            f"{self._indent()}<{tag}{self._attrs(attrs)} />"
+        )
+
+    def text(self, tag, value):
+        self.lines.append(
+            f"{self._indent()}<{tag}>{self._escape(value)}</{tag}>"
+        )
+
+    def _indent(self):
+        return "  " * self.level
+
+    @classmethod
+    def _attrs(cls, attrs):
+        if not attrs:
+            return ""
+        parts = [
+            f' {key}="{cls._escape(value, attribute=True)}"'
+            for key, value in attrs.items()
+        ]
+        return "".join(parts)
+
+    @staticmethod
+    def _escape(value, attribute=False):
+        text = str(value if value is not None else "")
+        text = (
+            text.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+        )
+        if attribute:
+            text = text.replace('"', "&quot;").replace("'", "&apos;")
+        return text
 ROUTE_ENDPOINT = "https://apis-navi.kakaomobility.com/v1/directions"
 ROUTE_PRIORITIES = {
     "RECOMMEND": "추천",
@@ -2794,26 +2839,25 @@ class KakaoQgisBridgePlugin:
         return shapefile_layer.featureCount()
 
     def _write_gpx_history(self, route_layer, guidance_layer, output_path):
-        ET.register_namespace("", "http://www.topografix.com/GPX/1/1")
-        ET.register_namespace("kakao", "https://yjkim.dev/kakao-qgis-bridge")
-        root = ET.Element(
-            "{http://www.topografix.com/GPX/1/1}gpx",
+        writer = GpxWriter()
+        writer.start(
+            "gpx",
             {
+                "xmlns": "http://www.topografix.com/GPX/1/1",
+                "xmlns:kakao": "https://yjkim.dev/kakao-qgis-bridge",
                 "version": "1.1",
                 "creator": "Kakao QGIS Bridge",
             },
         )
 
-        metadata = ET.SubElement(
-            root,
-            "{http://www.topografix.com/GPX/1/1}metadata",
-        )
-        self._gpx_text(metadata, "name", "Kakao QGIS Bridge Route History")
+        writer.start("metadata")
+        self._gpx_text(writer, "name", "Kakao QGIS Bridge Route History")
         self._gpx_text(
-            metadata,
+            writer,
             "time",
             datetime.now().astimezone().isoformat(timespec="seconds"),
         )
+        writer.end("metadata")
 
         route_features = list(route_layer.getFeatures())
         guidance_by_history = self._guidance_features_by_history(guidance_layer)
@@ -2832,18 +2876,13 @@ class KakaoQgisBridgePlugin:
             guides = guidance_by_history.get(history_id, [])
             guidance_total += len(guides)
 
-            self._append_gpx_waypoints(root, route_feature, guides)
-            self._append_gpx_track(root, name, desc, route_feature, points)
-            self._append_gpx_route(root, name, desc, route_feature, points)
+            self._append_gpx_waypoints(writer, route_feature, guides)
+            self._append_gpx_track(writer, name, desc, route_feature, points)
+            self._append_gpx_route(writer, name, desc, route_feature, points)
 
-        tree = ET.ElementTree(root)
+        writer.end("gpx")
         try:
-            tree.write(
-                str(output_path),
-                encoding="utf-8",
-                xml_declaration=True,
-                short_empty_elements=True,
-            )
+            output_path.write_text(writer.document(), encoding="utf-8")
         except OSError as exc:
             raise RuntimeError(f"{output_path.name} 저장 실패: {exc}") from exc
 
@@ -2968,10 +3007,10 @@ class KakaoQgisBridgePlugin:
             )
         return grouped
 
-    def _append_gpx_waypoints(self, root, route_feature, guide_features):
+    def _append_gpx_waypoints(self, writer, route_feature, guide_features):
         history_id = str(route_feature["history_id"] or "")
         self._append_gpx_wpt(
-            root,
+            writer,
             self._safe_float(route_feature["origin_lon"]),
             self._safe_float(route_feature["origin_lat"]),
             str(route_feature["origin_name"] or "출발지"),
@@ -2985,7 +3024,7 @@ class KakaoQgisBridgePlugin:
             start=1,
         ):
             self._append_gpx_wpt(
-                root,
+                writer,
                 self._safe_float(waypoint.get("lon")),
                 self._safe_float(waypoint.get("lat")),
                 str(waypoint.get("label") or f"경유지 {index}"),
@@ -2995,7 +3034,7 @@ class KakaoQgisBridgePlugin:
             )
 
         self._append_gpx_wpt(
-            root,
+            writer,
             self._safe_float(route_feature["destination_lon"]),
             self._safe_float(route_feature["destination_lat"]),
             str(route_feature["destination_name"] or "도착지"),
@@ -3007,7 +3046,7 @@ class KakaoQgisBridgePlugin:
         for guide in guide_features:
             sequence = self._safe_number(guide["sequence"])
             self._append_gpx_wpt(
-                root,
+                writer,
                 self._safe_float(guide["longitude"]),
                 self._safe_float(guide["latitude"]),
                 f"{sequence}. {guide['guidance']}",
@@ -3022,45 +3061,43 @@ class KakaoQgisBridgePlugin:
                 },
             )
 
-    def _append_gpx_track(self, root, name, desc, route_feature, points):
-        track = ET.SubElement(root, "{http://www.topografix.com/GPX/1/1}trk")
-        self._gpx_text(track, "name", name)
+    def _append_gpx_track(self, writer, name, desc, route_feature, points):
+        writer.start("trk")
+        self._gpx_text(writer, "name", name)
         if desc:
-            self._gpx_text(track, "desc", desc)
-        self._append_gpx_extensions(track, route_feature)
-        segment = ET.SubElement(
-            track,
-            "{http://www.topografix.com/GPX/1/1}trkseg",
-        )
+            self._gpx_text(writer, "desc", desc)
+        self._append_gpx_extensions(writer, route_feature)
+        writer.start("trkseg")
         for point in points:
-            ET.SubElement(
-                segment,
-                "{http://www.topografix.com/GPX/1/1}trkpt",
+            writer.empty(
+                "trkpt",
                 {
                     "lat": f"{point.y():.8f}",
                     "lon": f"{point.x():.8f}",
                 },
             )
+        writer.end("trkseg")
+        writer.end("trk")
 
-    def _append_gpx_route(self, root, name, desc, route_feature, points):
-        route = ET.SubElement(root, "{http://www.topografix.com/GPX/1/1}rte")
-        self._gpx_text(route, "name", name)
+    def _append_gpx_route(self, writer, name, desc, route_feature, points):
+        writer.start("rte")
+        self._gpx_text(writer, "name", name)
         if desc:
-            self._gpx_text(route, "desc", desc)
-        self._append_gpx_extensions(route, route_feature)
+            self._gpx_text(writer, "desc", desc)
+        self._append_gpx_extensions(writer, route_feature)
         for point in points:
-            ET.SubElement(
-                route,
-                "{http://www.topografix.com/GPX/1/1}rtept",
+            writer.empty(
+                "rtept",
                 {
                     "lat": f"{point.y():.8f}",
                     "lon": f"{point.x():.8f}",
                 },
             )
+        writer.end("rte")
 
     def _append_gpx_wpt(
         self,
-        root,
+        writer,
         lon,
         lat,
         name,
@@ -3074,33 +3111,28 @@ class KakaoQgisBridgePlugin:
         if not -180.0 <= lon <= 180.0 or not -90.0 <= lat <= 90.0:
             return
 
-        waypoint = ET.SubElement(
-            root,
-            "{http://www.topografix.com/GPX/1/1}wpt",
+        writer.start(
+            "wpt",
             {
                 "lat": f"{lat:.8f}",
                 "lon": f"{lon:.8f}",
             },
         )
-        self._gpx_text(waypoint, "name", name)
+        self._gpx_text(writer, "name", name)
         if desc:
-            self._gpx_text(waypoint, "desc", desc)
-        self._gpx_text(waypoint, "type", point_type)
+            self._gpx_text(writer, "desc", desc)
+        self._gpx_text(writer, "type", point_type)
 
-        extensions = ET.SubElement(
-            waypoint,
-            "{http://www.topografix.com/GPX/1/1}extensions",
-        )
-        self._gpx_kakao_text(extensions, "history_id", history_id)
+        writer.start("extensions")
+        self._gpx_kakao_text(writer, "history_id", history_id)
         if extra:
             for key, value in extra.items():
-                self._gpx_kakao_text(extensions, key, value)
+                self._gpx_kakao_text(writer, key, value)
+        writer.end("extensions")
+        writer.end("wpt")
 
-    def _append_gpx_extensions(self, parent, route_feature):
-        extensions = ET.SubElement(
-            parent,
-            "{http://www.topografix.com/GPX/1/1}extensions",
-        )
+    def _append_gpx_extensions(self, writer, route_feature):
+        writer.start("extensions")
         for key in (
             "history_id",
             "route_id",
@@ -3114,25 +3146,16 @@ class KakaoQgisBridgePlugin:
             "car_fuel",
             "car_hipass",
         ):
-            self._gpx_kakao_text(extensions, key, route_feature[key])
+            self._gpx_kakao_text(writer, key, route_feature[key])
+        writer.end("extensions")
 
     @staticmethod
-    def _gpx_text(parent, tag, value):
-        element = ET.SubElement(
-            parent,
-            f"{{http://www.topografix.com/GPX/1/1}}{tag}",
-        )
-        element.text = str(value)
-        return element
+    def _gpx_text(writer, tag, value):
+        writer.text(tag, value)
 
     @staticmethod
-    def _gpx_kakao_text(parent, tag, value):
-        element = ET.SubElement(
-            parent,
-            f"{{https://yjkim.dev/kakao-qgis-bridge}}{tag}",
-        )
-        element.text = str(value if value is not None else "")
-        return element
+    def _gpx_kakao_text(writer, tag, value):
+        writer.text(f"kakao:{tag}", value if value is not None else "")
 
     @staticmethod
     def _gpx_route_name(route_feature):

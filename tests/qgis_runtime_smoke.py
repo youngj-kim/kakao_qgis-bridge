@@ -93,6 +93,36 @@ def run(repo_root):
         if plugin.route_layer.featureCount() != 1:
             raise RuntimeError("route layer did not receive one feature")
 
+        route_points = [
+            QgsPointXY(126.9784, 37.5667),
+            QgsPointXY(127.01, 37.58),
+        ]
+        plugin._append_route_history(
+            history_id="history-smoke",
+            route_id="route-smoke",
+            searched_at="2026-01-01T00:00:00+09:00",
+            points=route_points,
+            origin=(126.9784, 37.5667),
+            destination=(127.01, 37.58),
+            origin_label="origin",
+            destination_label="destination",
+            waypoints=[],
+            distance=3_500,
+            duration=600,
+            guidance_count=0,
+            result_summary="10분 · 3.5 km",
+            priority="RECOMMEND",
+            avoid_options=[],
+            vehicle_options={
+                "car_type": 1,
+                "car_fuel": "GASOLINE",
+                "car_hipass": False,
+            },
+            guides=[],
+        )
+        if plugin.route_history_layer.featureCount() != 1:
+            raise RuntimeError("history repository did not receive one feature")
+
         bridge_server = KakaoExternalBridgeServer(port=0)
         viewer_url = bridge_server.start()
         with urlopen(viewer_url, timeout=3) as response:
@@ -114,6 +144,7 @@ def run(repo_root):
             "coordinate_transform": [round(lon, 6), round(lat, 6)],
             "route_point_features": plugin.route_points_layer.featureCount(),
             "route_features": plugin.route_layer.featureCount(),
+            "history_features": plugin.route_history_layer.featureCount(),
             "external_bridge": "ok",
             "project_layer_count": len(QgsProject.instance().mapLayers()),
         }

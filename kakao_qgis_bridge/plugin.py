@@ -24,9 +24,8 @@ from qgis.core import (
     QgsVectorFileWriter,
     QgsVectorLayer,
 )
-from qgis.PyQt.QtCore import QTimer, Qt, QUrl, QUrlQuery
+from qgis.PyQt.QtCore import QTimer, Qt, QUrl
 from qgis.PyQt.QtGui import QDesktopServices, QIcon
-from qgis.PyQt.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 from qgis.PyQt.QtWidgets import QFileDialog, QInputDialog, QLineEdit, QMessageBox
 
 try:
@@ -47,6 +46,19 @@ from .compat import (
 )
 from .dock_widget import KakaoMapDockWidget
 from .external_bridge import KakaoExternalBridgeServer
+from .history_export import GpxWriter
+from .history_repository import HistoryRepository
+from .mobility import (
+    ROUTE_AVOID_OPTIONS,
+    ROUTE_CAR_FUELS,
+    ROUTE_CAR_TYPES,
+    ROUTE_PRIORITIES,
+    MAX_ROUTE_WAYPOINTS,
+    RouteValidationError,
+    normalize_route_request,
+    route_result_summary,
+)
+from .mobility_client import MobilityClient
 from .settings import (
     PLUGIN_DIR,
     environment_javascript_key,
@@ -59,95 +71,13 @@ from .settings import (
     stored_javascript_key,
     stored_rest_api_key,
 )
+from .sync_controller import CanvasSyncController
 
 
 MENU_NAME = "&Kakao QGIS Bridge"
 LOG_TAG = "Kakao QGIS Bridge"
 
 
-class GpxWriter:
-    def __init__(self):
-        self.lines = []
-        self.level = 0
-
-    def document(self):
-        body = "\n".join(self.lines)
-        return f'<?xml version="1.0" encoding="utf-8"?>\n{body}\n'
-
-    def start(self, tag, attrs=None):
-        self.lines.append(
-            f"{self._indent()}<{tag}{self._attrs(attrs)}>"
-        )
-        self.level += 1
-
-    def end(self, tag):
-        self.level = max(0, self.level - 1)
-        self.lines.append(f"{self._indent()}</{tag}>")
-
-    def empty(self, tag, attrs=None):
-        self.lines.append(
-            f"{self._indent()}<{tag}{self._attrs(attrs)} />"
-        )
-
-    def text(self, tag, value):
-        self.lines.append(
-            f"{self._indent()}<{tag}>{self._escape(value)}</{tag}>"
-        )
-
-    def _indent(self):
-        return "  " * self.level
-
-    @classmethod
-    def _attrs(cls, attrs):
-        if not attrs:
-            return ""
-        parts = [
-            f' {key}="{cls._escape(value, attribute=True)}"'
-            for key, value in attrs.items()
-        ]
-        return "".join(parts)
-
-    @staticmethod
-    def _escape(value, attribute=False):
-        text = str(value if value is not None else "")
-        text = (
-            text.replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-        )
-        if attribute:
-            text = text.replace('"', "&quot;").replace("'", "&apos;")
-        return text
-ROUTE_ENDPOINT = "https://apis-navi.kakaomobility.com/v1/directions"
-ROUTE_PRIORITIES = {
-    "RECOMMEND": "추천",
-    "TIME": "최단 시간",
-    "DISTANCE": "최단 거리",
-}
-ROUTE_AVOID_OPTIONS = {
-    "toll": "유료도로",
-    "motorway": "자동차전용도로",
-    "ferries": "페리",
-    "schoolzone": "어린이보호구역",
-    "uturn": "유턴",
-}
-ROUTE_CAR_TYPES = {
-    1: "소형",
-    2: "중형",
-    3: "대형",
-    4: "대형 화물",
-    5: "특수 화물",
-    6: "경차",
-    7: "이륜차",
-}
-ROUTE_CAR_FUELS = {
-    "GASOLINE": "휘발유",
-    "DIESEL": "경유",
-    "LPG": "LPG",
-}
-MAX_ROUTE_WAYPOINTS = 5
-ROUTE_REQUEST_TIMEOUT_MS = 30_000
-HISTORY_SCHEMA_VERSION = 2
 ROUTE_HISTORY_LAYER_NAME = "kakao_route_history"
 GUIDANCE_HISTORY_LAYER_NAME = "kakao_guidance_history"
 
@@ -173,25 +103,41 @@ class KakaoQgisBridgePlugin:
         self.route_guidance_feature_ids = {}
         self.route_points_layer = None
         self.route_point_feature_ids = {}
-        self.route_history_layer = None
-        self.guidance_history_layer = None
+        self.history_repository = HistoryRepository(
+            self._route_line_symbol,
+            self._route_guidance_renderer,
+        )
         self.active_route_history_id = None
-        self.route_reply = None
-        self.network_manager = QNetworkAccessManager()
-        self.canvas_sync_connected = False
-        self.canvas_sync_timer = QTimer()
-        self.canvas_sync_timer.setSingleShot(True)
-        self.canvas_sync_timer.setInterval(350)
-        self.canvas_sync_timer.timeout.connect(self._sync_canvas_center)
-        self.reverse_sync_guard_timer = QTimer()
-        self.reverse_sync_guard_timer.setSingleShot(True)
-        self.reverse_sync_guard_timer.setInterval(600)
+        self.mobility_client = MobilityClient()
+        self.mobility_client.succeeded.connect(self._handle_route_result)
+        self.mobility_client.failed.connect(self._handle_route_failure)
+        self.sync_controller = CanvasSyncController(
+            self.iface,
+            self._has_canvas_sync_target,
+        )
+        self.sync_controller.syncRequested.connect(self._sync_canvas_center)
         self.external_bridge_server = None
         self.external_bridge_timer = QTimer()
         self.external_bridge_timer.setInterval(120)
         self.external_bridge_timer.timeout.connect(
             self._process_external_bridge_events
         )
+
+    @property
+    def route_history_layer(self):
+        return self.history_repository.route_layer
+
+    @route_history_layer.setter
+    def route_history_layer(self, layer):
+        self.history_repository.route_layer = layer
+
+    @property
+    def guidance_history_layer(self):
+        return self.history_repository.guidance_layer
+
+    @guidance_history_layer.setter
+    def guidance_history_layer(self, layer):
+        self.history_repository.guidance_layer = layer
 
     def initGui(self):
         self.action = QAction(
@@ -336,14 +282,7 @@ class KakaoQgisBridgePlugin:
             self.iface.removePluginMenu(MENU_NAME, self.export_gpx_action)
             self.export_gpx_action = None
 
-        if self.route_reply is not None:
-            try:
-                self.route_reply.finished.disconnect()
-            except (RuntimeError, TypeError):
-                pass
-            self.route_reply.abort()
-            self.route_reply.deleteLater()
-            self.route_reply = None
+        self.mobility_client.cancel()
 
         self._stop_external_bridge()
 
@@ -356,8 +295,7 @@ class KakaoQgisBridgePlugin:
         self._remove_route_layer()
         self._remove_route_guidance_layer()
         self._remove_route_points_layer()
-        self.route_history_layer = None
-        self.guidance_history_layer = None
+        self.history_repository.clear()
 
     def toggle_dock(self, checked):
         if checked:
@@ -637,12 +575,7 @@ class KakaoQgisBridgePlugin:
             self._deactivate_canvas_sync()
 
     def _activate_canvas_sync(self):
-        canvas = self.iface.mapCanvas()
-
-        if not self.canvas_sync_connected:
-            canvas.extentsChanged.connect(self._schedule_canvas_sync)
-            canvas.destinationCrsChanged.connect(self._schedule_canvas_sync)
-            self.canvas_sync_connected = True
+        if self.sync_controller.activate():
             if self.dock is not None and self.dock.web_view is None:
                 self.iface.messageBar().pushInfo(
                     "Kakao QGIS Bridge",
@@ -654,27 +587,11 @@ class KakaoQgisBridgePlugin:
                     "QGIS 이동은 Kakao에, Roadview 위치 이동은 QGIS에 양방향으로 반영됩니다.",
                 )
 
-        self._schedule_canvas_sync()
-
     def _deactivate_canvas_sync(self):
-        canvas = self.iface.mapCanvas()
-
-        self.canvas_sync_timer.stop()
-        self.reverse_sync_guard_timer.stop()
-        if self.canvas_sync_connected:
-            for signal in (canvas.extentsChanged, canvas.destinationCrsChanged):
-                try:
-                    signal.disconnect(self._schedule_canvas_sync)
-                except (RuntimeError, TypeError):
-                    pass
-            self.canvas_sync_connected = False
+        self.sync_controller.deactivate()
 
     def _schedule_canvas_sync(self, *_args):
-        if not self._has_canvas_sync_target():
-            return
-        if self.reverse_sync_guard_timer.isActive():
-            return
-        self.canvas_sync_timer.start()
+        self.sync_controller.schedule()
 
     def _sync_canvas_center(self):
         if not self._has_canvas_sync_target():
@@ -707,16 +624,8 @@ class KakaoQgisBridgePlugin:
             return
 
         canvas = self.iface.mapCanvas()
-        source_crs = QgsCoordinateReferenceSystem("EPSG:4326")
-        target_crs = canvas.mapSettings().destinationCrs()
-
         try:
-            transform = QgsCoordinateTransform(
-                source_crs,
-                target_crs,
-                QgsProject.instance(),
-            )
-            center = transform.transform(QgsPointXY(lon, lat))
+            center = self.sync_controller.from_wgs84(lon, lat)
         except Exception as exc:
             QgsMessageLog.logMessage(str(exc), LOG_TAG, MSG_WARNING)
             self.iface.messageBar().pushWarning(
@@ -725,8 +634,7 @@ class KakaoQgisBridgePlugin:
             )
             return
 
-        self.canvas_sync_timer.stop()
-        self.reverse_sync_guard_timer.start()
+        self.sync_controller.begin_reverse_sync()
         canvas.setCenter(center)
         canvas.refresh()
 
@@ -828,112 +736,26 @@ class KakaoQgisBridgePlugin:
         origin_label,
         destination_label,
     ):
-        coordinates = (
-            origin_lon,
-            origin_lat,
-            destination_lon,
-            destination_lat,
-        )
-        if not all(math.isfinite(value) for value in coordinates):
-            self._set_route_status(False, "출발지 또는 도착지 좌표가 올바르지 않습니다.")
-            return
-        if (
-            not -180.0 <= origin_lon <= 180.0
-            or not -90.0 <= origin_lat <= 90.0
-            or not -180.0 <= destination_lon <= 180.0
-            or not -90.0 <= destination_lat <= 90.0
-        ):
-            self._set_route_status(False, "출발지 또는 도착지 좌표가 범위를 벗어났습니다.")
-            return
-
-        if priority not in ROUTE_PRIORITIES:
-            priority = "RECOMMEND"
-
         try:
-            waypoint_data = json.loads(waypoints_json) if waypoints_json else []
-        except json.JSONDecodeError:
-            self._set_route_status(False, "경유지 정보를 해석하지 못했습니다.")
-            return
-
-        if not isinstance(waypoint_data, list):
-            self._set_route_status(False, "경유지 정보 형식이 올바르지 않습니다.")
-            return
-        if len(waypoint_data) > MAX_ROUTE_WAYPOINTS:
-            self._set_route_status(
-                False,
-                f"경유지는 최대 {MAX_ROUTE_WAYPOINTS}개까지 사용할 수 있습니다.",
+            route_request = normalize_route_request(
+                origin_lon,
+                origin_lat,
+                destination_lon,
+                destination_lat,
+                priority,
+                waypoints_json,
+                avoid_json,
+                vehicle_json,
+                origin_label,
+                destination_label,
             )
+        except RouteValidationError as exc:
+            self._set_route_status(False, str(exc))
             return
 
-        try:
-            avoid_data = json.loads(avoid_json) if avoid_json else []
-        except json.JSONDecodeError:
-            self._set_route_status(False, "경로 회피 옵션을 해석하지 못했습니다.")
-            return
-        if not isinstance(avoid_data, list):
-            self._set_route_status(False, "경로 회피 옵션 형식이 올바르지 않습니다.")
-            return
-
-        avoid_options = []
-        for value in avoid_data:
-            if value in ROUTE_AVOID_OPTIONS and value not in avoid_options:
-                avoid_options.append(value)
-
-        try:
-            vehicle_data = json.loads(vehicle_json) if vehicle_json else {}
-        except json.JSONDecodeError:
-            self._set_route_status(False, "차량 설정을 해석하지 못했습니다.")
-            return
-        if not isinstance(vehicle_data, dict):
-            self._set_route_status(False, "차량 설정 형식이 올바르지 않습니다.")
-            return
-
-        try:
-            car_type = int(vehicle_data.get("car_type", 1))
-        except (TypeError, ValueError):
-            car_type = 1
-        if car_type not in ROUTE_CAR_TYPES:
-            car_type = 1
-
-        car_fuel = str(vehicle_data.get("car_fuel", "GASOLINE"))
-        if car_fuel not in ROUTE_CAR_FUELS:
-            car_fuel = "GASOLINE"
-        car_hipass = vehicle_data.get("car_hipass") is True
-        vehicle_options = {
-            "car_type": car_type,
-            "car_fuel": car_fuel,
-            "car_hipass": car_hipass,
-        }
-
-        waypoints = []
-        for index, item in enumerate(waypoint_data):
-            if not isinstance(item, dict):
-                self._set_route_status(False, "경유지 정보 형식이 올바르지 않습니다.")
-                return
-            try:
-                lon = float(item["lon"])
-                lat = float(item["lat"])
-            except (KeyError, TypeError, ValueError):
-                self._set_route_status(False, "경유지 좌표가 올바르지 않습니다.")
-                return
-            if not math.isfinite(lon) or not math.isfinite(lat):
-                self._set_route_status(False, "경유지 좌표가 올바르지 않습니다.")
-                return
-            if not -180.0 <= lon <= 180.0 or not -90.0 <= lat <= 90.0:
-                self._set_route_status(False, "경유지 좌표가 범위를 벗어났습니다.")
-                return
-
-            point_id = str(item.get("id") or f"waypoint:{index + 1}")
-            if not point_id.startswith("waypoint:"):
-                point_id = f"waypoint:{index + 1}"
-            waypoints.append(
-                {
-                    "id": point_id,
-                    "label": str(item.get("label") or "").strip()[:255],
-                    "lon": lon,
-                    "lat": lat,
-                }
-            )
+        origin_lon, origin_lat = route_request.origin
+        destination_lon, destination_lat = route_request.destination
+        waypoints = route_request.waypoints
 
         self._set_route_point("origin", origin_lon, origin_lat)
         self._set_route_point("destination", destination_lon, destination_lat)
@@ -958,166 +780,30 @@ class KakaoQgisBridgePlugin:
                 return
             rest_key = kakao_rest_api_key()
 
-        if self.route_reply is not None:
-            try:
-                self.route_reply.finished.disconnect()
-            except (RuntimeError, TypeError):
-                pass
-            self.route_reply.abort()
-            self.route_reply.deleteLater()
+        self.mobility_client.request_route(rest_key, route_request)
 
-        url = QUrl(ROUTE_ENDPOINT)
-        query = QUrlQuery()
-        query.addQueryItem("origin", f"{origin_lon:.8f},{origin_lat:.8f}")
-        query.addQueryItem(
-            "destination",
-            f"{destination_lon:.8f},{destination_lat:.8f}",
-        )
-        if waypoints:
-            query.addQueryItem(
-                "waypoints",
-                "|".join(
-                    f'{waypoint["lon"]:.8f},{waypoint["lat"]:.8f}'
-                    for waypoint in waypoints
-                ),
-            )
-        if avoid_options:
-            query.addQueryItem("avoid", "|".join(avoid_options))
-        query.addQueryItem("priority", priority)
-        query.addQueryItem("car_type", str(car_type))
-        query.addQueryItem("car_fuel", car_fuel)
-        query.addQueryItem("car_hipass", "true" if car_hipass else "false")
-        query.addQueryItem("summary", "false")
-        query.addQueryItem("alternatives", "false")
-        query.addQueryItem("road_details", "false")
-        url.setQuery(query)
+    def _handle_route_failure(self, message):
+        self._set_route_status(False, message)
 
-        request = QNetworkRequest(url)
-        request.setRawHeader(
-            b"Authorization",
-            f"KakaoAK {rest_key}".encode("ascii"),
-        )
-        request.setRawHeader(b"Content-Type", b"application/json")
-
-        reply = self.network_manager.get(request)
-        self.route_reply = reply
-        timeout_timer = QTimer(reply)
-        timeout_timer.setSingleShot(True)
-        timeout_timer.setInterval(ROUTE_REQUEST_TIMEOUT_MS)
-
-        def abort_timed_out_reply():
-            if reply is self.route_reply and reply.isRunning():
-                reply.setProperty("kakaoRouteTimedOut", True)
-                reply.abort()
-
-        timeout_timer.timeout.connect(abort_timed_out_reply)
-        timeout_timer.start()
-        reply.finished.connect(
-            lambda current_reply=reply: self._handle_route_reply(
-                current_reply,
-                priority,
-                waypoints,
-                avoid_options,
-                vehicle_options,
-                (origin_lon, origin_lat),
-                (destination_lon, destination_lat),
-                str(origin_label).strip()[:255],
-                str(destination_label).strip()[:255],
-            )
-        )
-
-    def _handle_route_reply(
-        self,
-        reply,
-        priority,
-        waypoints,
-        avoid_options,
-        vehicle_options,
-        origin,
-        destination,
-        origin_label,
-        destination_label,
-    ):
-        if reply is not self.route_reply:
-            reply.deleteLater()
-            return
-
-        self.route_reply = None
-        status_code = reply.attribute(
-            QNetworkRequest.Attribute.HttpStatusCodeAttribute
-        )
-        timed_out = bool(reply.property("kakaoRouteTimedOut"))
-        raw_data = bytes(reply.readAll())
-        network_error = reply.error()
-        network_error_message = reply.errorString()
-        reply.deleteLater()
-
-        try:
-            payload = json.loads(raw_data.decode("utf-8")) if raw_data else {}
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            payload = {}
-
-        if (
-            network_error != QNetworkReply.NetworkError.NoError
-            or status_code != 200
-        ):
-            if timed_out:
-                self._set_route_status(
-                    False,
-                    "경로 탐색 요청 시간이 초과되었습니다. 네트워크 상태를 확인한 뒤 다시 시도해 주세요.",
-                )
-                return
-            message = (
-                payload.get("msg")
-                or payload.get("message")
-                or network_error_message
-                or f"HTTP {status_code}"
-            )
-            self._set_route_status(False, f"경로 탐색 실패: {message}")
-            return
-
-        routes = payload.get("routes") or []
-        if not routes:
-            self._set_route_status(False, "경로 탐색 결과가 없습니다.")
-            return
-
-        route = routes[0]
-        if route.get("result_code") != 0:
-            self._set_route_status(
-                False,
-                route.get("result_msg") or "경로를 찾지 못했습니다.",
-            )
-            return
-
-        points = []
-        for section in route.get("sections") or []:
-            for road in section.get("roads") or []:
-                vertexes = road.get("vertexes") or []
-                for index in range(0, len(vertexes) - 1, 2):
-                    try:
-                        point = QgsPointXY(
-                            float(vertexes[index]),
-                            float(vertexes[index + 1]),
-                        )
-                    except (TypeError, ValueError):
-                        continue
-                    if not points or point != points[-1]:
-                        points.append(point)
-
-        if len(points) < 2:
-            self._set_route_status(False, "경로 선형 좌표를 찾지 못했습니다.")
-            return
-
-        summary = route.get("summary") or {}
-        distance = int(summary.get("distance") or 0)
-        duration = int(summary.get("duration") or 0)
+    def _handle_route_result(self, result, route_request):
+        points = [QgsPointXY(lon, lat) for lon, lat in result.points]
+        distance = result.distance
+        duration = result.duration
+        priority = route_request.priority
+        waypoints = route_request.waypoints
+        avoid_options = route_request.avoid_options
+        vehicle_options = route_request.vehicle_options
+        origin = route_request.origin
+        destination = route_request.destination
+        origin_label = route_request.origin_label
+        destination_label = route_request.destination_label
         waypoint_count = len(waypoints)
-        route_id = str(payload.get("trans_id") or uuid4())
+        route_id = result.route_id
         history_id = str(uuid4())
         searched_at = datetime.now().astimezone().isoformat(timespec="seconds")
-        guides = self._extract_route_guides(route, route_id)
+        guides = list(result.guides)
         guidance_count = len(guides)
-        result_summary = self._route_result_summary(
+        result_summary = route_result_summary(
             distance,
             duration,
             vehicle_options["car_type"],
@@ -1218,55 +904,6 @@ class KakaoQgisBridgePlugin:
         self._set_route_status(True, message)
         self.iface.messageBar().pushSuccess("Kakao QGIS Bridge", message)
 
-    def _extract_route_guides(self, route, route_id):
-        guides = []
-        cumulative_distance = 0
-        cumulative_duration = 0
-
-        for section_index, section in enumerate(route.get("sections") or []):
-            for guide in section.get("guides") or []:
-                try:
-                    lon = float(guide["x"])
-                    lat = float(guide["y"])
-                    guide_type = int(guide.get("type") or 0)
-                    distance = max(0, int(guide.get("distance") or 0))
-                    duration = max(0, int(guide.get("duration") or 0))
-                    road_index = int(guide.get("road_index") or 0)
-                except (KeyError, TypeError, ValueError):
-                    continue
-                if not math.isfinite(lon) or not math.isfinite(lat):
-                    continue
-                if not -180.0 <= lon <= 180.0 or not -90.0 <= lat <= 90.0:
-                    continue
-
-                cumulative_distance += distance
-                cumulative_duration += duration
-                guidance = str(guide.get("guidance") or "").strip()
-                name = str(guide.get("name") or "").strip()
-                guides.append(
-                    {
-                        "route_id": route_id,
-                        "sequence": len(guides) + 1,
-                        "section_no": section_index + 1,
-                        "guide_type": guide_type,
-                        "category": self._guidance_category(
-                            guide_type,
-                            guidance,
-                        ),
-                        "guidance": guidance or name or "경로 안내",
-                        "name": name,
-                        "distance_m": distance,
-                        "duration_s": duration,
-                        "cumulative_distance_m": cumulative_distance,
-                        "cumulative_duration_s": cumulative_duration,
-                        "road_index": road_index,
-                        "longitude": lon,
-                        "latitude": lat,
-                    }
-                )
-
-        return guides
-
     def _append_route_history(
         self,
         history_id,
@@ -1287,81 +924,31 @@ class KakaoQgisBridgePlugin:
         vehicle_options,
         guides,
     ):
-        route_layer, guidance_layer = self._ensure_route_history_layers()
-
-        route_feature = QgsFeature(route_layer.fields())
-        route_feature.setGeometry(QgsGeometry.fromPolylineXY(points))
-        route_feature.setAttributes(
-            [
-                HISTORY_SCHEMA_VERSION,
-                history_id,
-                route_id,
-                searched_at,
-                origin[0],
-                origin[1],
-                origin_label,
-                destination[0],
-                destination[1],
-                destination_label,
-                json.dumps(
-                    waypoints,
-                    ensure_ascii=False,
-                    separators=(",", ":"),
-                ),
-                distance,
-                duration,
-                guidance_count,
-                result_summary,
-                priority,
-                "|".join(avoid_options),
-                vehicle_options["car_type"],
-                vehicle_options["car_fuel"],
-                1 if vehicle_options["car_hipass"] else 0,
-            ]
-        )
-        if not route_layer.dataProvider().addFeature(route_feature):
+        if not self.history_repository.append(
+            history_id,
+            route_id,
+            searched_at,
+            points,
+            origin,
+            destination,
+            origin_label,
+            destination_label,
+            waypoints,
+            distance,
+            duration,
+            guidance_count,
+            result_summary,
+            priority,
+            avoid_options,
+            vehicle_options,
+            guides,
+        ):
             QgsMessageLog.logMessage(
                 "경로 검색 이력을 메모리 레이어에 추가하지 못했습니다.",
                 LOG_TAG,
                 MSG_WARNING,
             )
             return
-        route_layer.updateExtents()
-
-        guidance_features = []
-        for guide in guides:
-            feature = QgsFeature(guidance_layer.fields())
-            feature.setGeometry(
-                QgsGeometry.fromPointXY(
-                    QgsPointXY(guide["longitude"], guide["latitude"])
-                )
-            )
-            feature.setAttributes(
-                [
-                    HISTORY_SCHEMA_VERSION,
-                    history_id,
-                    guide["route_id"],
-                    searched_at,
-                    guide["sequence"],
-                    guide["section_no"],
-                    guide["guide_type"],
-                    guide["category"],
-                    guide["guidance"],
-                    guide["name"],
-                    guide["distance_m"],
-                    guide["duration_s"],
-                    guide["cumulative_distance_m"],
-                    guide["cumulative_duration_s"],
-                    guide["road_index"],
-                    guide["longitude"],
-                    guide["latitude"],
-                ]
-            )
-            guidance_features.append(feature)
-
-        if guidance_features:
-            guidance_layer.dataProvider().addFeatures(guidance_features)
-            guidance_layer.updateExtents()
 
         if self.save_history_action is not None:
             self.save_history_action.setEnabled(True)
@@ -1374,70 +961,7 @@ class KakaoQgisBridgePlugin:
         self._sync_route_history_panel(history_id)
 
     def _ensure_route_history_layers(self):
-        if self.route_history_layer is None:
-            route_uri = (
-                "LineString?crs=EPSG:4326"
-                "&field=schema_ver:integer"
-                "&field=history_id:string(36)"
-                "&field=route_id:string(64)"
-                "&field=searched_at:string(32)"
-                "&field=origin_lon:double"
-                "&field=origin_lat:double"
-                "&field=origin_name:string(255)"
-                "&field=destination_lon:double"
-                "&field=destination_lat:double"
-                "&field=destination_name:string(255)"
-                "&field=waypoints_json:string(4096)"
-                "&field=distance_m:integer"
-                "&field=duration_s:integer"
-                "&field=guidance_count:integer"
-                "&field=result_summary:string(255)"
-                "&field=priority:string(16)"
-                "&field=avoid:string(128)"
-                "&field=car_type:integer"
-                "&field=car_fuel:string(16)"
-                "&field=car_hipass:integer"
-            )
-            self.route_history_layer = QgsVectorLayer(
-                route_uri,
-                "Kakao Route History",
-                "memory",
-            )
-            self.route_history_layer.renderer().setSymbol(
-                self._route_line_symbol()
-            )
-
-        if self.guidance_history_layer is None:
-            guidance_uri = (
-                "Point?crs=EPSG:4326"
-                "&field=schema_ver:integer"
-                "&field=history_id:string(36)"
-                "&field=route_id:string(64)"
-                "&field=searched_at:string(32)"
-                "&field=sequence:integer"
-                "&field=section_no:integer"
-                "&field=guide_type:integer"
-                "&field=category:string(16)"
-                "&field=guidance:string(255)"
-                "&field=name:string(128)"
-                "&field=distance_m:integer"
-                "&field=duration_s:integer"
-                "&field=cum_distance_m:integer"
-                "&field=cum_duration_s:integer"
-                "&field=road_index:integer"
-                "&field=longitude:double"
-                "&field=latitude:double"
-            )
-            self.guidance_history_layer = QgsVectorLayer(
-                guidance_uri,
-                "Kakao Guidance History",
-                "memory",
-            )
-            self.guidance_history_layer.setRenderer(
-                self._route_guidance_renderer()
-            )
-
-        return self.route_history_layer, self.guidance_history_layer
+        return self.history_repository.ensure_layers()
 
     def _load_route_history_file(self, _checked=False):
         project_home = QgsProject.instance().homePath()
@@ -3481,53 +3005,6 @@ class KakaoQgisBridgePlugin:
             subset.updateExtents()
         return subset
 
-    @staticmethod
-    def _guidance_category(guide_type, guidance):
-        if guide_type == 100:
-            return "start"
-        if guide_type == 101:
-            return "destination"
-        if guide_type == 1000:
-            return "waypoint"
-        if guide_type == 3 or "유턴" in guidance:
-            return "uturn"
-        if 30 <= guide_type <= 41 or 70 <= guide_type <= 81:
-            return "roundabout"
-        if guide_type in {
-            1, 5, 8, 11, 24, 25, 26, 27, 28,
-            43, 46, 48, 76, 77, 78, 79, 80, 82,
-        } or "좌회전" in guidance or "왼쪽" in guidance:
-            return "left"
-        if guide_type in {
-            2, 6, 9, 12, 18, 19, 20, 21, 22,
-            44, 47, 49, 70, 71, 72, 73, 74, 83,
-        } or "우회전" in guidance or "오른쪽" in guidance:
-            return "right"
-        if guide_type in {0, 29} or "직진" in guidance:
-            return "straight"
-        if guide_type in {
-            7, 8, 9, 10, 11, 12, 14, 15, 16, 17,
-            42, 43, 44, 45, 46, 47, 48, 49,
-            61, 62, 84, 85, 86, 300, 301,
-        }:
-            return "transition"
-        return "other"
-
-    @staticmethod
-    def _route_result_summary(
-        distance,
-        duration,
-        car_type,
-        guidance_count,
-    ):
-        duration_minutes = max(1, round(duration / 60))
-        distance_km = distance / 1000
-        car_label = ROUTE_CAR_TYPES.get(car_type, str(car_type))
-        return (
-            f"{duration_minutes}분 · {distance_km:.1f} km · "
-            f"{car_label} · 안내 {guidance_count}개"
-        )
-
     def _create_route_layer(
         self,
         points,
@@ -3973,9 +3450,4 @@ class KakaoQgisBridgePlugin:
             )
 
     def _to_epsg_4326(self, point):
-        canvas = self.iface.mapCanvas()
-        source_crs = canvas.mapSettings().destinationCrs()
-        target_crs = QgsCoordinateReferenceSystem("EPSG:4326")
-        transform = QgsCoordinateTransform(source_crs, target_crs, QgsProject.instance())
-        transformed = transform.transform(point)
-        return transformed.x(), transformed.y()
+        return self.sync_controller.to_wgs84(point)

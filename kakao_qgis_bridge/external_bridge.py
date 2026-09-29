@@ -1,7 +1,10 @@
 import json
+import hmac
+import secrets
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from queue import Empty, Queue
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 from .settings import PLUGIN_DIR, kakao_javascript_key
 
@@ -10,6 +13,7 @@ EXTERNAL_BRIDGE_SCRIPT = r"""
 <script>
 (() => {
   document.documentElement.classList.add("external-browser");
+  const bridgeToken = __KAKAO_BRIDGE_TOKEN_JSON__;
 
   const handlers = {
     routeStatusChanged: [],
@@ -34,7 +38,10 @@ EXTERNAL_BRIDGE_SCRIPT = r"""
     try {
       await fetch(path, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Kakao-Bridge-Token": bridgeToken
+        },
         body: JSON.stringify(payload || {})
       });
     } catch (error) {
@@ -44,7 +51,10 @@ EXTERNAL_BRIDGE_SCRIPT = r"""
 
   async function pollState() {
     try {
-      const response = await fetch("/api/state", { cache: "no-store" });
+      const response = await fetch("/api/state", {
+        cache: "no-store",
+        headers: { "X-Kakao-Bridge-Token": bridgeToken }
+      });
       if (!response.ok) {
         return;
       }
@@ -65,7 +75,8 @@ EXTERNAL_BRIDGE_SCRIPT = r"""
   async function pollEvents() {
     try {
       const response = await fetch(`/api/events?since=${lastEventSequence}`, {
-        cache: "no-store"
+        cache: "no-store",
+        headers: { "X-Kakao-Bridge-Token": bridgeToken }
       });
       if (!response.ok) {
         return;
@@ -145,7 +156,11 @@ EXTERNAL_BRIDGE_SCRIPT = r"""
       post("/api/refresh-route-history", {});
     },
     openExternalViewer() {
-      window.open("/", "_blank", "noopener");
+      window.open(
+        `/?token=${encodeURIComponent(bridgeToken)}`,
+        "_blank",
+        "noopener"
+      );
     },
     requestRoute(
       origin_lon,
@@ -183,12 +198,35 @@ EXTERNAL_BRIDGE_SCRIPT = r"""
 """
 
 
+MAX_REQUEST_BODY_BYTES = 64 * 1024
+EXTERNAL_EVENT_PATHS = {
+    "/api/move-center": "move_center",
+    "/api/roadview-state": "roadview_state",
+    "/api/request-route": "request_route",
+    "/api/route-point": "route_point",
+    "/api/clear-route-point": "clear_route_point",
+    "/api/clear-route-points": "clear_route_points",
+    "/api/select-route-guidance": "select_route_guidance",
+    "/api/select-route-history": "select_route_history",
+    "/api/load-route-history-file": "load_route_history_file",
+    "/api/load-route-history": "load_route_history",
+    "/api/delete-route-history": "delete_route_history",
+    "/api/delete-all-route-histories": "delete_all_route_histories",
+    "/api/export-route-history": "export_route_history",
+    "/api/export-route-histories": "export_route_histories",
+    "/api/refresh-route-history": "refresh_route_history",
+}
+
+
 class KakaoExternalBridgeServer:
     def __init__(self, host="127.0.0.1", port=8081):
         self.host = host
         self.port = port
         self._server = None
         self._thread = None
+        self._token = secrets.token_urlsafe(32)
+        self._viewer_document = ""
+        self._state_lock = threading.Lock()
         self._events = Queue()
         self._outbound_events = []
         self._outbound_sequence = 0
@@ -200,14 +238,19 @@ class KakaoExternalBridgeServer:
         if self._server is None:
             return ""
         _host, port = self._server.server_address
-        return f"http://localhost:{port}/"
+        query = urlencode({"token": self._token})
+        return f"http://localhost:{port}/?{query}"
 
     def start(self):
         if self._server is not None:
             return self.url
 
+        # Render while still on the QGIS UI thread. QgsSettings and other Qt
+        # backed objects must not be accessed by HTTP worker threads.
+        self._viewer_document = self._viewer_html()
         handler = self._make_handler()
         self._server = ThreadingHTTPServer((self.host, self.port), handler)
+        self._server.daemon_threads = True
         self._thread = threading.Thread(
             target=self._server.serve_forever,
             name="KakaoQgisExternalBridge",
@@ -220,18 +263,24 @@ class KakaoExternalBridgeServer:
         if self._server is None:
             return
 
-        self._server.shutdown()
-        self._server.server_close()
+        server = self._server
+        thread = self._thread
+        server.shutdown()
+        server.server_close()
+        if thread is not None and thread is not threading.current_thread():
+            thread.join(timeout=2.0)
         self._server = None
         self._thread = None
+        self._viewer_document = ""
 
     def set_center(self, lon, lat):
-        self._center_sequence += 1
-        self._center = {
-            "lon": float(lon),
-            "lat": float(lat),
-            "sequence": self._center_sequence,
-        }
+        with self._state_lock:
+            self._center_sequence += 1
+            self._center = {
+                "lon": float(lon),
+                "lat": float(lat),
+                "sequence": self._center_sequence,
+            }
 
     def drain_events(self):
         events = []
@@ -242,16 +291,17 @@ class KakaoExternalBridgeServer:
                 return events
 
     def emit_signal(self, name, *args):
-        self._outbound_sequence += 1
-        self._outbound_events.append(
-            {
-                "sequence": self._outbound_sequence,
-                "signal": name,
-                "args": list(args),
-            }
-        )
-        if len(self._outbound_events) > 100:
-            self._outbound_events = self._outbound_events[-100:]
+        with self._state_lock:
+            self._outbound_sequence += 1
+            self._outbound_events.append(
+                {
+                    "sequence": self._outbound_sequence,
+                    "signal": name,
+                    "args": list(args),
+                }
+            )
+            if len(self._outbound_events) > 100:
+                self._outbound_events = self._outbound_events[-100:]
 
     def _viewer_html(self):
         html = (PLUGIN_DIR / "web" / "kakao_viewer.html").read_text(
@@ -260,6 +310,10 @@ class KakaoExternalBridgeServer:
         html = html.replace(
             '<script src="qrc:///qtwebchannel/qwebchannel.js"></script>',
             EXTERNAL_BRIDGE_SCRIPT,
+        )
+        html = html.replace(
+            "__KAKAO_BRIDGE_TOKEN_JSON__",
+            json.dumps(self._token),
         )
         return html.replace(
             "__KAKAO_APP_KEY_JSON__",
@@ -270,44 +324,100 @@ class KakaoExternalBridgeServer:
         bridge = self
 
         class Handler(BaseHTTPRequestHandler):
+            server_version = "KakaoQgisBridge"
+            sys_version = ""
+
             def do_GET(self):
-                if self.path in ("/", "/viewer"):
-                    self._send_text(bridge._viewer_html(), "text/html")
+                parsed = urlsplit(self.path)
+                if parsed.path in ("/", "/viewer"):
+                    token = parse_qs(parsed.query).get("token", [""])[0]
+                    if not self._authorized(token):
+                        return
+                    self._send_text(bridge._viewer_document, "text/html")
                     return
-                if self.path == "/api/state":
-                    self._send_json({"center": bridge._center})
+                if not self._authorized():
                     return
-                if self.path.startswith("/api/events"):
+                if parsed.path == "/api/state":
+                    with bridge._state_lock:
+                        center = dict(bridge._center) if bridge._center else None
+                    self._send_json({"center": center})
+                    return
+                if parsed.path == "/api/events":
                     since = 0
-                    if "?since=" in self.path:
-                        try:
-                            since = int(self.path.rsplit("?since=", 1)[-1])
-                        except ValueError:
-                            since = 0
+                    try:
+                        since = int(parse_qs(parsed.query).get("since", ["0"])[0])
+                    except ValueError:
+                        since = 0
+                    with bridge._state_lock:
+                        events = [
+                            dict(event)
+                            for event in bridge._outbound_events
+                            if event["sequence"] > since
+                        ]
                     self._send_json(
-                        {
-                            "events": [
-                                event
-                                for event in bridge._outbound_events
-                                if event["sequence"] > since
-                            ]
-                        }
+                        {"events": events}
                     )
                     return
 
                 self.send_error(404)
 
             def do_POST(self):
-                length = int(self.headers.get("Content-Length", "0") or "0")
+                parsed = urlsplit(self.path)
+                try:
+                    length = int(self.headers.get("Content-Length", "0") or "0")
+                except ValueError:
+                    self.send_error(400, "invalid Content-Length")
+                    return
+                if length < 0 or length > MAX_REQUEST_BODY_BYTES:
+                    self.send_error(413, "request body too large")
+                    return
                 raw = self.rfile.read(length) if length else b"{}"
+
+                event_type = EXTERNAL_EVENT_PATHS.get(parsed.path)
+                if event_type is None:
+                    self.send_error(404)
+                    return
+                if not self._authorized():
+                    return
+                if self.headers.get_content_type() != "application/json":
+                    self.send_error(415, "application/json required")
+                    return
                 try:
                     payload = json.loads(raw.decode("utf-8"))
-                except json.JSONDecodeError:
-                    payload = {}
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    self.send_error(400, "invalid JSON")
+                    return
+                if not isinstance(payload, dict):
+                    self.send_error(400, "JSON object required")
+                    return
 
-                event_type = self.path.rsplit("/", 1)[-1].replace("-", "_")
                 bridge._events.put({"type": event_type, "payload": payload})
                 self._send_json({"ok": True})
+
+            def _authorized(self, token=""):
+                _host, port = self.server.server_address
+                expected_hosts = {f"localhost:{port}", f"127.0.0.1:{port}"}
+                if self.headers.get("Host", "") not in expected_hosts:
+                    self.send_error(403)
+                    return False
+
+                origin = self.headers.get("Origin", "")
+                expected_origins = {
+                    f"http://localhost:{port}",
+                    f"http://127.0.0.1:{port}",
+                }
+                if origin and origin not in expected_origins:
+                    self.send_error(403)
+                    return False
+
+                supplied_token = token or self.headers.get(
+                    "X-Kakao-Bridge-Token",
+                    "",
+                )
+                if not hmac.compare_digest(supplied_token, bridge._token):
+                    self.send_error(403)
+                    return False
+                return True
 
             def log_message(self, _format, *_args):
                 return
@@ -321,6 +431,9 @@ class KakaoExternalBridgeServer:
                 )
                 self.send_header("Cache-Control", "no-store, max-age=0")
                 self.send_header("Pragma", "no-cache")
+                self.send_header("Referrer-Policy", "no-referrer")
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.send_header("X-Frame-Options", "DENY")
                 self.send_header("Content-Length", str(len(encoded)))
                 self.end_headers()
                 self.wfile.write(encoded)

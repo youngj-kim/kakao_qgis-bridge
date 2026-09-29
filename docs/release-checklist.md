@@ -55,6 +55,25 @@ plugin repository.
 - [x] Export route history to GPX.
 - [x] Load GPX with sidecar QML styles.
 - [x] Test external browser integration mode when available.
+- [ ] Open the external browser viewer from the plugin menu while the Dock is
+  closed and confirm QGIS-to-browser synchronization remains active.
+- [ ] Confirm an external bridge API request without the current session token
+  is rejected and does not change QGIS state.
+
+## Automated Checks
+
+- [x] Run `python -m compileall -q kakao_qgis_bridge tests`.
+- [x] Run `python -m unittest discover -s tests -v`.
+- [x] Confirm the inline viewer JavaScript parses without syntax errors.
+- [x] Run `tests/qgis_runtime_smoke.py` with the bundled Python runtimes from
+  QGIS 3.44 and QGIS 4.2.
+- [x] Create and show the real Dock widget in QGIS 3.44 and in a full QGIS 4.2
+  desktop application instance.
+- [x] Restart QGIS 4.2 with the installed test build and confirm the plugin
+  operates normally in the user's desktop session.
+- [x] Restart QGIS 3.44 with the installed test build and confirm the external
+  browser integration operates normally in the user's desktop session.
+- [ ] Run the automated checks in CI on every pull request and release tag.
 
 ## Package
 

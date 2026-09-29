@@ -146,6 +146,7 @@ ROUTE_CAR_FUELS = {
     "LPG": "LPG",
 }
 MAX_ROUTE_WAYPOINTS = 5
+ROUTE_REQUEST_TIMEOUT_MS = 30_000
 HISTORY_SCHEMA_VERSION = 2
 ROUTE_HISTORY_LAYER_NAME = "kakao_route_history"
 GUIDANCE_HISTORY_LAYER_NAME = "kakao_guidance_history"
@@ -533,6 +534,8 @@ class KakaoQgisBridgePlugin:
         if self.external_bridge_server is not None:
             self.external_bridge_server.stop()
             self.external_bridge_server = None
+        if self.dock is None or not self.dock.isVisible():
+            self._deactivate_canvas_sync()
 
     def _open_external_viewer(self):
         if not self._ensure_api_key():
@@ -542,7 +545,7 @@ class KakaoQgisBridgePlugin:
         if server is None:
             return
 
-        self._schedule_canvas_sync()
+        self._activate_canvas_sync()
         QDesktopServices.openUrl(QUrl(server.url))
 
     def _process_external_bridge_events(self):
@@ -630,7 +633,7 @@ class KakaoQgisBridgePlugin:
 
         if visible:
             self._activate_canvas_sync()
-        else:
+        elif self.external_bridge_server is None:
             self._deactivate_canvas_sync()
 
     def _activate_canvas_sync(self):
@@ -667,14 +670,14 @@ class KakaoQgisBridgePlugin:
             self.canvas_sync_connected = False
 
     def _schedule_canvas_sync(self, *_args):
-        if self.dock is None or not self.dock.isVisible():
+        if not self._has_canvas_sync_target():
             return
         if self.reverse_sync_guard_timer.isActive():
             return
         self.canvas_sync_timer.start()
 
     def _sync_canvas_center(self):
-        if self.dock is None or not self.dock.isVisible():
+        if not self._has_canvas_sync_target():
             return
 
         canvas = self.iface.mapCanvas()
@@ -688,9 +691,14 @@ class KakaoQgisBridgePlugin:
             )
             return
 
-        self.dock.set_center(lon, lat)
+        if self.dock is not None and self.dock.isVisible():
+            self.dock.set_center(lon, lat)
         if self.external_bridge_server is not None:
             self.external_bridge_server.set_center(lon, lat)
+
+    def _has_canvas_sync_target(self):
+        dock_visible = self.dock is not None and self.dock.isVisible()
+        return dock_visible or self.external_bridge_server is not None
 
     def _handle_viewer_moved(self, lon, lat):
         if not math.isfinite(lon) or not math.isfinite(lat):
@@ -993,6 +1001,17 @@ class KakaoQgisBridgePlugin:
 
         reply = self.network_manager.get(request)
         self.route_reply = reply
+        timeout_timer = QTimer(reply)
+        timeout_timer.setSingleShot(True)
+        timeout_timer.setInterval(ROUTE_REQUEST_TIMEOUT_MS)
+
+        def abort_timed_out_reply():
+            if reply is self.route_reply and reply.isRunning():
+                reply.setProperty("kakaoRouteTimedOut", True)
+                reply.abort()
+
+        timeout_timer.timeout.connect(abort_timed_out_reply)
+        timeout_timer.start()
         reply.finished.connect(
             lambda current_reply=reply: self._handle_route_reply(
                 current_reply,
@@ -1027,6 +1046,7 @@ class KakaoQgisBridgePlugin:
         status_code = reply.attribute(
             QNetworkRequest.Attribute.HttpStatusCodeAttribute
         )
+        timed_out = bool(reply.property("kakaoRouteTimedOut"))
         raw_data = bytes(reply.readAll())
         network_error = reply.error()
         network_error_message = reply.errorString()
@@ -1041,6 +1061,12 @@ class KakaoQgisBridgePlugin:
             network_error != QNetworkReply.NetworkError.NoError
             or status_code != 200
         ):
+            if timed_out:
+                self._set_route_status(
+                    False,
+                    "경로 탐색 요청 시간이 초과되었습니다. 네트워크 상태를 확인한 뒤 다시 시도해 주세요.",
+                )
+                return
             message = (
                 payload.get("msg")
                 or payload.get("message")

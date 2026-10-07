@@ -4,6 +4,12 @@ qgisMinimumVersion=3.34
 qgisMaximumVersion=4.99
 description=Dock-based Kakao Map and Roadview viewer with bidirectional QGIS synchronization and Local search.
 version=1.1.0
+changelog=1.1.0
+    - Refactored route validation, Mobility networking, canvas synchronization, route history, and GPX export into focused modules.
+    - Hardened the external browser bridge with session-token, Origin, and request validation.
+    - Added Python unit tests and QGIS 3.44 / 4.2 runtime smoke tests.
+    - Added Windows and Ubuntu CI for compilation, tests, viewer JavaScript validation, and reproducible ZIP packaging.
+    - Verified the packaged plugin in QGIS 3.44 and QGIS 4.2.
 author=yjkim
 email=contact@yjkim.dev
 about=Shows Kakao Maps JavaScript API content inside a QGIS dock widget and synchronizes QGIS, Kakao Map, and Roadview in both directions. Includes Local place/address search, Roadview position/direction display, Kakao Mobility route search, route guidance, and route history import/export. Requires user-provided Kakao JavaScript and REST API keys. Kakao tile URLs are not extracted or used as XYZ/TMS layers.

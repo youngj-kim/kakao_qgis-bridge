@@ -1127,6 +1127,7 @@
     let routeBusy = false;
     let routeSearchTimer = null;
     let routeGuidance = [];
+    let latestRouteGuidancePayload = null;
     let routeHistory = [];
     let routePolyline = null;
     let selectedRouteHistoryIds = new Set();
@@ -1650,6 +1651,7 @@
 
     function renderRouteGuidance(payload) {
       const routePayload = payload || {};
+      latestRouteGuidancePayload = routePayload;
       const guides = Array.isArray(routePayload.guides) ? routePayload.guides : [];
       routeGuidance = guides;
       activeGuidanceSequence = null;
@@ -1786,6 +1788,7 @@
         connectQgisBridgeSignals();
         updateRouteControls();
         setStatus("외부 브라우저 연동 모드로 QGIS와 연결했습니다.");
+        qgisBridge.start();
         return;
       }
 
@@ -2339,19 +2342,23 @@
       return coordinate;
     }
 
-    function syncKakaoMapToQgis() {
+    function syncKakaoMapToQgis(updateRoadview = false) {
       const position = map.getCenter();
       const lat = position.getLat();
       const lon = position.getLng();
       marker.setPosition(position);
+      // Update locally on drag end; this tab does not receive its own echo.
+      if (updateRoadview && roadviewClient && roadview) {
+        updateRoadviewPosition(position);
+      }
 
       if (!qgisBridge) {
-        setStatus("Kakao Map moved, but the QGIS bridge is not ready.");
+        setStatus("카카오 지도 위치를 QGIS에 전달할 연결이 아직 준비되지 않았습니다.");
         return;
       }
 
       qgisBridge.moveQgisCenter(lon, lat);
-      setStatus(`Kakao Map -> QGIS EPSG:4326 ${lat.toFixed(6)}, ${lon.toFixed(6)}.`);
+      setStatus(`카카오 지도 → QGIS EPSG:4326 ${lat.toFixed(6)}, ${lon.toFixed(6)}`);
     }
 
     function scheduleKakaoMapSync() {
@@ -2439,7 +2446,7 @@
       if (qgisBridge) {
         qgisBridge.moveQgisCenter(result.lon, result.lat);
       }
-      setStatus(`Search -> QGIS EPSG:4326 ${result.lat.toFixed(6)}, ${result.lon.toFixed(6)}.`);
+      setStatus(`검색 결과 → QGIS EPSG:4326 ${result.lat.toFixed(6)}, ${result.lon.toFixed(6)}`);
     }
 
     function renderSearchResults(results, onSelect = selectSearchResult) {
@@ -2484,7 +2491,7 @@
       selectFirst = false
     ) {
       if (!placesService || !geocoderService) {
-        setStatus("Kakao Local search is not ready.");
+        setStatus("카카오 장소·주소 검색이 아직 준비되지 않았습니다.");
         return;
       }
 
@@ -2496,7 +2503,7 @@
       if (manageSearchButton) {
         searchSubmit.disabled = true;
       }
-      setStatus(`Searching Kakao Local: ${query}`);
+      setStatus(`카카오 장소·주소 검색 중: ${query}`);
 
       const finish = () => {
         if (requestId !== searchRequestId) {
@@ -2533,8 +2540,8 @@
           searchSubmit.disabled = false;
         }
         setStatus(failed && !results.length
-          ? "Kakao Local search failed."
-          : `Kakao Local search results: ${results.length}`);
+          ? "카카오 장소·주소 검색에 실패했습니다."
+          : `카카오 장소·주소 검색 결과: ${results.length}개`);
       };
 
       placesService.keywordSearch(query, (data, status) => {
@@ -2573,7 +2580,7 @@
         script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(appKey)}&autoload=false&libraries=services`;
         script.async = true;
         script.onload = () => window.kakao.maps.load(resolve);
-        script.onerror = () => reject(new Error("Failed to load Kakao Maps JavaScript API."));
+        script.onerror = () => reject(new Error("카카오 지도 API를 불러오지 못했습니다. 네트워크와 JavaScript 키·SDK 도메인 설정을 확인하세요."));
         document.head.appendChild(script);
       });
     }
@@ -2598,7 +2605,7 @@
       kakao.maps.event.addListener(map, "dragend", () => {
         window.clearTimeout(mapSyncTimer);
         mapSyncTimer = null;
-        syncKakaoMapToQgis();
+        syncKakaoMapToQgis(true);
       });
 
       kakao.maps.event.addListener(map, "click", () => {
@@ -2643,12 +2650,12 @@
         window.clearTimeout(roadviewSyncTimer);
         roadviewSyncTimer = window.setTimeout(() => {
           if (!qgisBridge) {
-            setStatus("Roadview moved, but the QGIS bridge is not ready.");
+            setStatus("로드뷰 위치를 QGIS에 전달할 연결이 아직 준비되지 않았습니다.");
             return;
           }
 
           qgisBridge.moveQgisCenter(lon, lat);
-          setStatus(`Roadview -> QGIS EPSG:4326 ${lat.toFixed(6)}, ${lon.toFixed(6)}.`);
+          setStatus(`로드뷰 → QGIS EPSG:4326 ${lat.toFixed(6)}, ${lon.toFixed(6)}`);
         }, 200);
       });
 
@@ -2664,8 +2671,11 @@
         scheduleRoadviewStateSync();
       });
 
-      setStatus("Ready. QGIS, Kakao Map, and Roadview position sync is active.");
+      setStatus("준비되었습니다. QGIS·카카오 지도·로드뷰 위치 동기화가 활성화되었습니다.");
       moveViewer(defaultCenter.lon, defaultCenter.lat);
+      if (latestRouteGuidancePayload) {
+        renderRouteGuidance(latestRouteGuidancePayload);
+      }
       scheduleStableRelayout();
 
       if (pendingCenter) {
@@ -2775,7 +2785,7 @@
         ? roadview.getPosition()
         : map && map.getCenter();
       if (!position || !qgisBridge) {
-        setStatus("The Kakao Roadview link is not ready.");
+        setStatus("카카오 로드뷰 링크가 아직 준비되지 않았습니다.");
         return;
       }
 
@@ -2934,7 +2944,7 @@
 
     routeCreateButton.addEventListener("click", async () => {
       if (!qgisBridge) {
-        setStatus("QGIS route bridge is not ready.");
+        setStatus("QGIS 경로 탐색 연결이 아직 준비되지 않았습니다.");
         return;
       }
 
@@ -3006,11 +3016,16 @@
     });
 
     function moveViewer(lon, lat) {
-      const requestId = ++moveRequestId;
       const position = new kakao.maps.LatLng(lat, lon);
       map.setCenter(position);
       marker.setPosition(position);
+      updateRoadviewPosition(position);
+    }
 
+    function updateRoadviewPosition(position) {
+      const requestId = ++moveRequestId;
+      const lon = position.getLng();
+      const lat = position.getLat();
       roadviewClient.getNearestPanoId(position, 80, (panoId) => {
         if (requestId !== moveRequestId) {
           return;
@@ -3019,22 +3034,24 @@
         if (panoId) {
           programmaticRoadviewPanoId = panoId;
           roadview.setPanoId(panoId, position);
-          setStatus(`EPSG:4326 ${lat.toFixed(6)}, ${lon.toFixed(6)} - Roadview loaded.`);
+          setStatus(`EPSG:4326 ${lat.toFixed(6)}, ${lon.toFixed(6)} · 로드뷰를 불러왔습니다.`);
         } else {
-          setStatus(`EPSG:4326 ${lat.toFixed(6)}, ${lon.toFixed(6)} - No nearby Roadview panorama.`);
+          setStatus(`EPSG:4326 ${lat.toFixed(6)}, ${lon.toFixed(6)} · 주변에 로드뷰 촬영 지점이 없습니다.`);
         }
       });
     }
 
+    window.setKakaoBridgeStatus = setStatus;
+
     window.centerKakaoMap = function centerKakaoMap(lon, lat) {
       if (!Number.isFinite(lon) || !Number.isFinite(lat)) {
-        setStatus("Invalid coordinate received from QGIS.");
+        setStatus("QGIS에서 받은 좌표가 올바르지 않습니다.");
         return;
       }
 
       if (!map || !roadviewClient) {
         pendingCenter = { lon, lat };
-        setStatus(`Queued EPSG:4326 ${lat.toFixed(6)}, ${lon.toFixed(6)} until Kakao API is ready.`);
+        setStatus(`카카오 API 준비 대기 중 · EPSG:4326 ${lat.toFixed(6)}, ${lon.toFixed(6)}`);
         return;
       }
 
@@ -3100,7 +3117,7 @@
     initQgisBridge();
 
     if (!kakaoAppKey) {
-      setStatus("Set KAKAO_MAP_JAVASCRIPT_KEY or kakao_qgis_bridge/settings.json before loading the viewer.");
+      setStatus("플러그인 메뉴의 JavaScript API 키 설정 또는 KAKAO_MAP_JAVASCRIPT_KEY 환경변수에 키를 입력하세요.");
     } else {
       loadKakaoScript(kakaoAppKey)
         .then(initViewer)

@@ -8,8 +8,11 @@ from qgis.PyQt.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRe
 from .mobility import (
     MobilityResponseError,
     ROUTE_ENDPOINT,
+    RouteValidationError,
     parse_route_payload,
+    route_http_error_message,
     route_query_items,
+    validate_rest_api_key,
 )
 
 
@@ -27,13 +30,19 @@ class MobilityClient(QObject):
 
     def request_route(self, rest_key, route_request):
         self.cancel()
+        try:
+            rest_key = validate_rest_api_key(rest_key)
+            authorization = f"KakaoAK {rest_key}".encode("ascii")
+        except (RouteValidationError, UnicodeEncodeError):
+            self.failed.emit("REST API 키 형식이 올바르지 않습니다.")
+            return
         url = QUrl(ROUTE_ENDPOINT)
         query = QUrlQuery()
         for key, value in route_query_items(route_request):
             query.addQueryItem(key, value)
         url.setQuery(query)
         request = QNetworkRequest(url)
-        request.setRawHeader(b"Authorization", f"KakaoAK {rest_key}".encode("ascii"))
+        request.setRawHeader(b"Authorization", authorization)
         request.setRawHeader(b"Content-Type", b"application/json")
 
         reply = self._manager.get(request)
@@ -79,7 +88,7 @@ class MobilityClient(QObject):
         try:
             payload = json.loads(raw_data.decode("utf-8")) if raw_data else {}
         except (UnicodeDecodeError, json.JSONDecodeError):
-            payload = {}
+            payload = None
 
         if network_error != QNetworkReply.NetworkError.NoError or status_code != 200:
             if timed_out:
@@ -87,13 +96,9 @@ class MobilityClient(QObject):
                     "경로 탐색 요청 시간이 초과되었습니다. 네트워크 상태를 확인한 뒤 다시 시도해 주세요."
                 )
                 return
-            message = (
-                payload.get("msg")
-                or payload.get("message")
-                or network_error_message
-                or f"HTTP {status_code}"
+            self.failed.emit(
+                route_http_error_message(status_code, payload, network_error_message)
             )
-            self.failed.emit(f"경로 탐색 실패: {message}")
             return
         try:
             result = parse_route_payload(payload)

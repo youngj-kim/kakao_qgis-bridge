@@ -1,0 +1,893 @@
+{
+  "route": {
+    "layers": [
+      {
+        "type": "SimpleLine",
+        "properties": {
+          "align_dash_pattern": "0",
+          "capstyle": "square",
+          "customdash": "5;2",
+          "customdash_map_unit_scale": "3x:0,0,0,0,0,0",
+          "customdash_unit": "MM",
+          "dash_pattern_offset": "0",
+          "dash_pattern_offset_map_unit_scale": "3x:0,0,0,0,0,0",
+          "dash_pattern_offset_unit": "MM",
+          "draw_inside_polygon": "0",
+          "joinstyle": "bevel",
+          "line_color": "25,118,210,255,rgb:0.0980392,0.4627451,0.8235294,1",
+          "line_style": "solid",
+          "line_width": "1.4",
+          "line_width_unit": "MM",
+          "offset": "0",
+          "offset_map_unit_scale": "3x:0,0,0,0,0,0",
+          "offset_unit": "MM",
+          "ring_filter": "0",
+          "trim_distance_end": "0",
+          "trim_distance_end_map_unit_scale": "3x:0,0,0,0,0,0",
+          "trim_distance_end_unit": "MM",
+          "trim_distance_start": "0",
+          "trim_distance_start_map_unit_scale": "3x:0,0,0,0,0,0",
+          "trim_distance_start_unit": "MM",
+          "tweak_dash_pattern_on_corners": "0",
+          "use_custom_dash": "0",
+          "width_map_unit_scale": "3x:0,0,0,0,0,0"
+        }
+      }
+    ],
+    "color": "#1976d2",
+    "angle_field": ""
+  },
+  "guidance": {
+    "attribute": "category",
+    "categories": [
+      {
+        "value": "start",
+        "label": "출발",
+        "visible": true,
+        "symbol": {
+          "layers": [
+            {
+              "type": "SvgMarker",
+              "properties": {
+                "angle": "0",
+                "color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "fixedAspectRatio": "0",
+                "horizontal_anchor_point": "1",
+                "name": "sha256:0f7c0a775193ffd5da6589920e6c628ff818d2d5fd757a0178857c0cdd859c7f",
+                "offset": "0,0",
+                "offset_map_unit_scale": "3x:0,0,0,0,0,0",
+                "offset_unit": "MM",
+                "outline_color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "outline_width": "0.2",
+                "outline_width_map_unit_scale": "3x:0,0,0,0,0,0",
+                "outline_width_unit": "MM",
+                "parameters": {},
+                "scale_method": "diameter",
+                "size": "7.5",
+                "size_map_unit_scale": "3x:0,0,0,0,0,0",
+                "size_unit": "MM",
+                "vertical_anchor_point": "2"
+              }
+            }
+          ],
+          "color": "#232323",
+          "angle_field": ""
+        }
+      },
+      {
+        "value": "destination",
+        "label": "도착",
+        "visible": true,
+        "symbol": {
+          "layers": [
+            {
+              "type": "SvgMarker",
+              "properties": {
+                "angle": "0",
+                "color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "fixedAspectRatio": "0",
+                "horizontal_anchor_point": "1",
+                "name": "sha256:0bf87938316b5dc8c3ef2d09988d11755279e2306ec2f43cc1728e388c7baecd",
+                "offset": "0,0",
+                "offset_map_unit_scale": "3x:0,0,0,0,0,0",
+                "offset_unit": "MM",
+                "outline_color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "outline_width": "0.2",
+                "outline_width_map_unit_scale": "3x:0,0,0,0,0,0",
+                "outline_width_unit": "MM",
+                "parameters": {},
+                "scale_method": "diameter",
+                "size": "7.5",
+                "size_map_unit_scale": "3x:0,0,0,0,0,0",
+                "size_unit": "MM",
+                "vertical_anchor_point": "2"
+              }
+            }
+          ],
+          "color": "#232323",
+          "angle_field": ""
+        }
+      },
+      {
+        "value": "waypoint",
+        "label": "경유지",
+        "visible": true,
+        "symbol": {
+          "layers": [
+            {
+              "type": "SvgMarker",
+              "properties": {
+                "angle": "0",
+                "color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "fixedAspectRatio": "0",
+                "horizontal_anchor_point": "1",
+                "name": "sha256:c9599797f3680e57742e5ac1f6609e81a95855a590d3234e9d5b0c1f5b069f5a",
+                "offset": "0,0",
+                "offset_map_unit_scale": "3x:0,0,0,0,0,0",
+                "offset_unit": "MM",
+                "outline_color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "outline_width": "0.2",
+                "outline_width_map_unit_scale": "3x:0,0,0,0,0,0",
+                "outline_width_unit": "MM",
+                "parameters": {},
+                "scale_method": "diameter",
+                "size": "7.5",
+                "size_map_unit_scale": "3x:0,0,0,0,0,0",
+                "size_unit": "MM",
+                "vertical_anchor_point": "2"
+              }
+            }
+          ],
+          "color": "#232323",
+          "angle_field": ""
+        }
+      },
+      {
+        "value": "straight",
+        "label": "직진",
+        "visible": true,
+        "symbol": {
+          "layers": [
+            {
+              "type": "SvgMarker",
+              "properties": {
+                "angle": "0",
+                "color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "fixedAspectRatio": "0",
+                "horizontal_anchor_point": "1",
+                "name": "sha256:1674c10968d50112cf937f079d58d7edfaf63112c3fe7af6b573a40d6c8f0460",
+                "offset": "0,0",
+                "offset_map_unit_scale": "3x:0,0,0,0,0,0",
+                "offset_unit": "MM",
+                "outline_color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "outline_width": "0.2",
+                "outline_width_map_unit_scale": "3x:0,0,0,0,0,0",
+                "outline_width_unit": "MM",
+                "parameters": {},
+                "scale_method": "diameter",
+                "size": "6.5",
+                "size_map_unit_scale": "3x:0,0,0,0,0,0",
+                "size_unit": "MM",
+                "vertical_anchor_point": "1"
+              }
+            }
+          ],
+          "color": "#232323",
+          "angle_field": ""
+        }
+      },
+      {
+        "value": "left",
+        "label": "좌회전",
+        "visible": true,
+        "symbol": {
+          "layers": [
+            {
+              "type": "SvgMarker",
+              "properties": {
+                "angle": "0",
+                "color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "fixedAspectRatio": "0",
+                "horizontal_anchor_point": "1",
+                "name": "sha256:4be50fdf724ebc32582dda7f06ba914d82ebc1a789343078958d536acd82a254",
+                "offset": "0,0",
+                "offset_map_unit_scale": "3x:0,0,0,0,0,0",
+                "offset_unit": "MM",
+                "outline_color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "outline_width": "0.2",
+                "outline_width_map_unit_scale": "3x:0,0,0,0,0,0",
+                "outline_width_unit": "MM",
+                "parameters": {},
+                "scale_method": "diameter",
+                "size": "6.5",
+                "size_map_unit_scale": "3x:0,0,0,0,0,0",
+                "size_unit": "MM",
+                "vertical_anchor_point": "1"
+              }
+            }
+          ],
+          "color": "#232323",
+          "angle_field": ""
+        }
+      },
+      {
+        "value": "right",
+        "label": "우회전",
+        "visible": true,
+        "symbol": {
+          "layers": [
+            {
+              "type": "SvgMarker",
+              "properties": {
+                "angle": "0",
+                "color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "fixedAspectRatio": "0",
+                "horizontal_anchor_point": "1",
+                "name": "sha256:d7d1ce2b8d331d12d14349c1ad875426e5571d4de9d4b74c0a8f4a4681b4e8c5",
+                "offset": "0,0",
+                "offset_map_unit_scale": "3x:0,0,0,0,0,0",
+                "offset_unit": "MM",
+                "outline_color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "outline_width": "0.2",
+                "outline_width_map_unit_scale": "3x:0,0,0,0,0,0",
+                "outline_width_unit": "MM",
+                "parameters": {},
+                "scale_method": "diameter",
+                "size": "6.5",
+                "size_map_unit_scale": "3x:0,0,0,0,0,0",
+                "size_unit": "MM",
+                "vertical_anchor_point": "1"
+              }
+            }
+          ],
+          "color": "#232323",
+          "angle_field": ""
+        }
+      },
+      {
+        "value": "uturn",
+        "label": "유턴",
+        "visible": true,
+        "symbol": {
+          "layers": [
+            {
+              "type": "SvgMarker",
+              "properties": {
+                "angle": "0",
+                "color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "fixedAspectRatio": "0",
+                "horizontal_anchor_point": "1",
+                "name": "sha256:2d92317b05a2cac008201409e138b75c22c091ad69c4d7224661a5fc09208c00",
+                "offset": "0,0",
+                "offset_map_unit_scale": "3x:0,0,0,0,0,0",
+                "offset_unit": "MM",
+                "outline_color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "outline_width": "0.2",
+                "outline_width_map_unit_scale": "3x:0,0,0,0,0,0",
+                "outline_width_unit": "MM",
+                "parameters": {},
+                "scale_method": "diameter",
+                "size": "6.5",
+                "size_map_unit_scale": "3x:0,0,0,0,0,0",
+                "size_unit": "MM",
+                "vertical_anchor_point": "1"
+              }
+            }
+          ],
+          "color": "#232323",
+          "angle_field": ""
+        }
+      },
+      {
+        "value": "roundabout",
+        "label": "회전교차로",
+        "visible": true,
+        "symbol": {
+          "layers": [
+            {
+              "type": "SvgMarker",
+              "properties": {
+                "angle": "0",
+                "color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "fixedAspectRatio": "0",
+                "horizontal_anchor_point": "1",
+                "name": "sha256:a710a49d2d859a9b72338acfa9f5bd0ce55de2e0db0d032a643b54bac871d784",
+                "offset": "0,0",
+                "offset_map_unit_scale": "3x:0,0,0,0,0,0",
+                "offset_unit": "MM",
+                "outline_color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "outline_width": "0.2",
+                "outline_width_map_unit_scale": "3x:0,0,0,0,0,0",
+                "outline_width_unit": "MM",
+                "parameters": {},
+                "scale_method": "diameter",
+                "size": "6.5",
+                "size_map_unit_scale": "3x:0,0,0,0,0,0",
+                "size_unit": "MM",
+                "vertical_anchor_point": "1"
+              }
+            }
+          ],
+          "color": "#232323",
+          "angle_field": ""
+        }
+      },
+      {
+        "value": "transition",
+        "label": "진출입",
+        "visible": true,
+        "symbol": {
+          "layers": [
+            {
+              "type": "SvgMarker",
+              "properties": {
+                "angle": "0",
+                "color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "fixedAspectRatio": "0",
+                "horizontal_anchor_point": "1",
+                "name": "sha256:f9c077bb5964ba3bd85d56713442717c57444ecbd807a8b8358e2fbf59ddfa3e",
+                "offset": "0,0",
+                "offset_map_unit_scale": "3x:0,0,0,0,0,0",
+                "offset_unit": "MM",
+                "outline_color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "outline_width": "0.2",
+                "outline_width_map_unit_scale": "3x:0,0,0,0,0,0",
+                "outline_width_unit": "MM",
+                "parameters": {},
+                "scale_method": "diameter",
+                "size": "6.5",
+                "size_map_unit_scale": "3x:0,0,0,0,0,0",
+                "size_unit": "MM",
+                "vertical_anchor_point": "1"
+              }
+            }
+          ],
+          "color": "#232323",
+          "angle_field": ""
+        }
+      },
+      {
+        "value": "other",
+        "label": "기타 안내",
+        "visible": true,
+        "symbol": {
+          "layers": [
+            {
+              "type": "SvgMarker",
+              "properties": {
+                "angle": "0",
+                "color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "fixedAspectRatio": "0",
+                "horizontal_anchor_point": "1",
+                "name": "sha256:5370e7b596c2f435ef172fa75345db1a8eaf9781f23ace2d4b6eb2b7770d08ca",
+                "offset": "0,0",
+                "offset_map_unit_scale": "3x:0,0,0,0,0,0",
+                "offset_unit": "MM",
+                "outline_color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "outline_width": "0.2",
+                "outline_width_map_unit_scale": "3x:0,0,0,0,0,0",
+                "outline_width_unit": "MM",
+                "parameters": {},
+                "scale_method": "diameter",
+                "size": "6.5",
+                "size_map_unit_scale": "3x:0,0,0,0,0,0",
+                "size_unit": "MM",
+                "vertical_anchor_point": "1"
+              }
+            }
+          ],
+          "color": "#232323",
+          "angle_field": ""
+        }
+      }
+    ]
+  },
+  "gpx": {
+    "attribute": "type",
+    "categories": [
+      {
+        "value": "origin",
+        "label": "출발지",
+        "visible": true,
+        "symbol": {
+          "layers": [
+            {
+              "type": "SvgMarker",
+              "properties": {
+                "angle": "0",
+                "color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "fixedAspectRatio": "0",
+                "horizontal_anchor_point": "1",
+                "name": "sha256:0f7c0a775193ffd5da6589920e6c628ff818d2d5fd757a0178857c0cdd859c7f",
+                "offset": "0,0",
+                "offset_map_unit_scale": "3x:0,0,0,0,0,0",
+                "offset_unit": "MM",
+                "outline_color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "outline_width": "0.2",
+                "outline_width_map_unit_scale": "3x:0,0,0,0,0,0",
+                "outline_width_unit": "MM",
+                "parameters": {},
+                "scale_method": "diameter",
+                "size": "7.5",
+                "size_map_unit_scale": "3x:0,0,0,0,0,0",
+                "size_unit": "MM",
+                "vertical_anchor_point": "2"
+              }
+            }
+          ],
+          "color": "#232323",
+          "angle_field": ""
+        }
+      },
+      {
+        "value": "destination",
+        "label": "도착지",
+        "visible": true,
+        "symbol": {
+          "layers": [
+            {
+              "type": "SvgMarker",
+              "properties": {
+                "angle": "0",
+                "color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "fixedAspectRatio": "0",
+                "horizontal_anchor_point": "1",
+                "name": "sha256:0bf87938316b5dc8c3ef2d09988d11755279e2306ec2f43cc1728e388c7baecd",
+                "offset": "0,0",
+                "offset_map_unit_scale": "3x:0,0,0,0,0,0",
+                "offset_unit": "MM",
+                "outline_color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "outline_width": "0.2",
+                "outline_width_map_unit_scale": "3x:0,0,0,0,0,0",
+                "outline_width_unit": "MM",
+                "parameters": {},
+                "scale_method": "diameter",
+                "size": "7.5",
+                "size_map_unit_scale": "3x:0,0,0,0,0,0",
+                "size_unit": "MM",
+                "vertical_anchor_point": "2"
+              }
+            }
+          ],
+          "color": "#232323",
+          "angle_field": ""
+        }
+      },
+      {
+        "value": "waypoint",
+        "label": "경유지",
+        "visible": true,
+        "symbol": {
+          "layers": [
+            {
+              "type": "SvgMarker",
+              "properties": {
+                "angle": "0",
+                "color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "fixedAspectRatio": "0",
+                "horizontal_anchor_point": "1",
+                "name": "sha256:c9599797f3680e57742e5ac1f6609e81a95855a590d3234e9d5b0c1f5b069f5a",
+                "offset": "0,0",
+                "offset_map_unit_scale": "3x:0,0,0,0,0,0",
+                "offset_unit": "MM",
+                "outline_color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "outline_width": "0.2",
+                "outline_width_map_unit_scale": "3x:0,0,0,0,0,0",
+                "outline_width_unit": "MM",
+                "parameters": {},
+                "scale_method": "diameter",
+                "size": "7.5",
+                "size_map_unit_scale": "3x:0,0,0,0,0,0",
+                "size_unit": "MM",
+                "vertical_anchor_point": "2"
+              }
+            }
+          ],
+          "color": "#232323",
+          "angle_field": ""
+        }
+      },
+      {
+        "value": "guidance:straight",
+        "label": "직진",
+        "visible": true,
+        "symbol": {
+          "layers": [
+            {
+              "type": "SvgMarker",
+              "properties": {
+                "angle": "0",
+                "color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "fixedAspectRatio": "0",
+                "horizontal_anchor_point": "1",
+                "name": "sha256:1674c10968d50112cf937f079d58d7edfaf63112c3fe7af6b573a40d6c8f0460",
+                "offset": "0,0",
+                "offset_map_unit_scale": "3x:0,0,0,0,0,0",
+                "offset_unit": "MM",
+                "outline_color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "outline_width": "0.2",
+                "outline_width_map_unit_scale": "3x:0,0,0,0,0,0",
+                "outline_width_unit": "MM",
+                "parameters": {},
+                "scale_method": "diameter",
+                "size": "6.5",
+                "size_map_unit_scale": "3x:0,0,0,0,0,0",
+                "size_unit": "MM",
+                "vertical_anchor_point": "1"
+              }
+            }
+          ],
+          "color": "#232323",
+          "angle_field": ""
+        }
+      },
+      {
+        "value": "guidance:left",
+        "label": "좌회전",
+        "visible": true,
+        "symbol": {
+          "layers": [
+            {
+              "type": "SvgMarker",
+              "properties": {
+                "angle": "0",
+                "color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "fixedAspectRatio": "0",
+                "horizontal_anchor_point": "1",
+                "name": "sha256:4be50fdf724ebc32582dda7f06ba914d82ebc1a789343078958d536acd82a254",
+                "offset": "0,0",
+                "offset_map_unit_scale": "3x:0,0,0,0,0,0",
+                "offset_unit": "MM",
+                "outline_color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "outline_width": "0.2",
+                "outline_width_map_unit_scale": "3x:0,0,0,0,0,0",
+                "outline_width_unit": "MM",
+                "parameters": {},
+                "scale_method": "diameter",
+                "size": "6.5",
+                "size_map_unit_scale": "3x:0,0,0,0,0,0",
+                "size_unit": "MM",
+                "vertical_anchor_point": "1"
+              }
+            }
+          ],
+          "color": "#232323",
+          "angle_field": ""
+        }
+      },
+      {
+        "value": "guidance:right",
+        "label": "우회전",
+        "visible": true,
+        "symbol": {
+          "layers": [
+            {
+              "type": "SvgMarker",
+              "properties": {
+                "angle": "0",
+                "color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "fixedAspectRatio": "0",
+                "horizontal_anchor_point": "1",
+                "name": "sha256:d7d1ce2b8d331d12d14349c1ad875426e5571d4de9d4b74c0a8f4a4681b4e8c5",
+                "offset": "0,0",
+                "offset_map_unit_scale": "3x:0,0,0,0,0,0",
+                "offset_unit": "MM",
+                "outline_color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "outline_width": "0.2",
+                "outline_width_map_unit_scale": "3x:0,0,0,0,0,0",
+                "outline_width_unit": "MM",
+                "parameters": {},
+                "scale_method": "diameter",
+                "size": "6.5",
+                "size_map_unit_scale": "3x:0,0,0,0,0,0",
+                "size_unit": "MM",
+                "vertical_anchor_point": "1"
+              }
+            }
+          ],
+          "color": "#232323",
+          "angle_field": ""
+        }
+      },
+      {
+        "value": "guidance:uturn",
+        "label": "유턴",
+        "visible": true,
+        "symbol": {
+          "layers": [
+            {
+              "type": "SvgMarker",
+              "properties": {
+                "angle": "0",
+                "color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "fixedAspectRatio": "0",
+                "horizontal_anchor_point": "1",
+                "name": "sha256:2d92317b05a2cac008201409e138b75c22c091ad69c4d7224661a5fc09208c00",
+                "offset": "0,0",
+                "offset_map_unit_scale": "3x:0,0,0,0,0,0",
+                "offset_unit": "MM",
+                "outline_color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "outline_width": "0.2",
+                "outline_width_map_unit_scale": "3x:0,0,0,0,0,0",
+                "outline_width_unit": "MM",
+                "parameters": {},
+                "scale_method": "diameter",
+                "size": "6.5",
+                "size_map_unit_scale": "3x:0,0,0,0,0,0",
+                "size_unit": "MM",
+                "vertical_anchor_point": "1"
+              }
+            }
+          ],
+          "color": "#232323",
+          "angle_field": ""
+        }
+      },
+      {
+        "value": "guidance:roundabout",
+        "label": "회전교차로",
+        "visible": true,
+        "symbol": {
+          "layers": [
+            {
+              "type": "SvgMarker",
+              "properties": {
+                "angle": "0",
+                "color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "fixedAspectRatio": "0",
+                "horizontal_anchor_point": "1",
+                "name": "sha256:a710a49d2d859a9b72338acfa9f5bd0ce55de2e0db0d032a643b54bac871d784",
+                "offset": "0,0",
+                "offset_map_unit_scale": "3x:0,0,0,0,0,0",
+                "offset_unit": "MM",
+                "outline_color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "outline_width": "0.2",
+                "outline_width_map_unit_scale": "3x:0,0,0,0,0,0",
+                "outline_width_unit": "MM",
+                "parameters": {},
+                "scale_method": "diameter",
+                "size": "6.5",
+                "size_map_unit_scale": "3x:0,0,0,0,0,0",
+                "size_unit": "MM",
+                "vertical_anchor_point": "1"
+              }
+            }
+          ],
+          "color": "#232323",
+          "angle_field": ""
+        }
+      },
+      {
+        "value": "guidance:transition",
+        "label": "진출입",
+        "visible": true,
+        "symbol": {
+          "layers": [
+            {
+              "type": "SvgMarker",
+              "properties": {
+                "angle": "0",
+                "color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "fixedAspectRatio": "0",
+                "horizontal_anchor_point": "1",
+                "name": "sha256:f9c077bb5964ba3bd85d56713442717c57444ecbd807a8b8358e2fbf59ddfa3e",
+                "offset": "0,0",
+                "offset_map_unit_scale": "3x:0,0,0,0,0,0",
+                "offset_unit": "MM",
+                "outline_color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "outline_width": "0.2",
+                "outline_width_map_unit_scale": "3x:0,0,0,0,0,0",
+                "outline_width_unit": "MM",
+                "parameters": {},
+                "scale_method": "diameter",
+                "size": "6.5",
+                "size_map_unit_scale": "3x:0,0,0,0,0,0",
+                "size_unit": "MM",
+                "vertical_anchor_point": "1"
+              }
+            }
+          ],
+          "color": "#232323",
+          "angle_field": ""
+        }
+      },
+      {
+        "value": "guidance:other",
+        "label": "기타 안내",
+        "visible": true,
+        "symbol": {
+          "layers": [
+            {
+              "type": "SvgMarker",
+              "properties": {
+                "angle": "0",
+                "color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "fixedAspectRatio": "0",
+                "horizontal_anchor_point": "1",
+                "name": "sha256:5370e7b596c2f435ef172fa75345db1a8eaf9781f23ace2d4b6eb2b7770d08ca",
+                "offset": "0,0",
+                "offset_map_unit_scale": "3x:0,0,0,0,0,0",
+                "offset_unit": "MM",
+                "outline_color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+                "outline_width": "0.2",
+                "outline_width_map_unit_scale": "3x:0,0,0,0,0,0",
+                "outline_width_unit": "MM",
+                "parameters": {},
+                "scale_method": "diameter",
+                "size": "6.5",
+                "size_map_unit_scale": "3x:0,0,0,0,0,0",
+                "size_unit": "MM",
+                "vertical_anchor_point": "1"
+              }
+            }
+          ],
+          "color": "#232323",
+          "angle_field": ""
+        }
+      }
+    ]
+  },
+  "pin": {
+    "layers": [
+      {
+        "type": "SvgMarker",
+        "properties": {
+          "angle": "0",
+          "color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+          "fixedAspectRatio": "0",
+          "horizontal_anchor_point": "1",
+          "name": "sha256:0f7c0a775193ffd5da6589920e6c628ff818d2d5fd757a0178857c0cdd859c7f",
+          "offset": "0,0",
+          "offset_map_unit_scale": "3x:0,0,0,0,0,0",
+          "offset_unit": "MM",
+          "outline_color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+          "outline_width": "0.2",
+          "outline_width_map_unit_scale": "3x:0,0,0,0,0,0",
+          "outline_width_unit": "MM",
+          "parameters": {},
+          "scale_method": "diameter",
+          "size": "9",
+          "size_map_unit_scale": "3x:0,0,0,0,0,0",
+          "size_unit": "MM",
+          "vertical_anchor_point": "2"
+        }
+      }
+    ],
+    "color": "#232323",
+    "angle_field": ""
+  },
+  "point_categories": [
+    {
+      "value": "origin",
+      "label": "출발지",
+      "symbol": {
+        "layers": [
+          {
+            "type": "SvgMarker",
+            "properties": {
+              "angle": "0",
+              "color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+              "fixedAspectRatio": "0",
+              "horizontal_anchor_point": "1",
+              "name": "sha256:0f7c0a775193ffd5da6589920e6c628ff818d2d5fd757a0178857c0cdd859c7f",
+              "offset": "0,0",
+              "offset_map_unit_scale": "3x:0,0,0,0,0,0",
+              "offset_unit": "MM",
+              "outline_color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+              "outline_width": "0.2",
+              "outline_width_map_unit_scale": "3x:0,0,0,0,0,0",
+              "outline_width_unit": "MM",
+              "parameters": {},
+              "scale_method": "diameter",
+              "size": "9",
+              "size_map_unit_scale": "3x:0,0,0,0,0,0",
+              "size_unit": "MM",
+              "vertical_anchor_point": "2"
+            }
+          }
+        ],
+        "color": "#232323",
+        "angle_field": ""
+      }
+    },
+    {
+      "value": "destination",
+      "label": "도착지",
+      "symbol": {
+        "layers": [
+          {
+            "type": "SvgMarker",
+            "properties": {
+              "angle": "0",
+              "color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+              "fixedAspectRatio": "0",
+              "horizontal_anchor_point": "1",
+              "name": "sha256:0bf87938316b5dc8c3ef2d09988d11755279e2306ec2f43cc1728e388c7baecd",
+              "offset": "0,0",
+              "offset_map_unit_scale": "3x:0,0,0,0,0,0",
+              "offset_unit": "MM",
+              "outline_color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+              "outline_width": "0.2",
+              "outline_width_map_unit_scale": "3x:0,0,0,0,0,0",
+              "outline_width_unit": "MM",
+              "parameters": {},
+              "scale_method": "diameter",
+              "size": "9",
+              "size_map_unit_scale": "3x:0,0,0,0,0,0",
+              "size_unit": "MM",
+              "vertical_anchor_point": "2"
+            }
+          }
+        ],
+        "color": "#232323",
+        "angle_field": ""
+      }
+    },
+    {
+      "value": "waypoint",
+      "label": "경유지",
+      "symbol": {
+        "layers": [
+          {
+            "type": "SvgMarker",
+            "properties": {
+              "angle": "0",
+              "color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+              "fixedAspectRatio": "0",
+              "horizontal_anchor_point": "1",
+              "name": "sha256:c9599797f3680e57742e5ac1f6609e81a95855a590d3234e9d5b0c1f5b069f5a",
+              "offset": "0,0",
+              "offset_map_unit_scale": "3x:0,0,0,0,0,0",
+              "offset_unit": "MM",
+              "outline_color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+              "outline_width": "0.2",
+              "outline_width_map_unit_scale": "3x:0,0,0,0,0,0",
+              "outline_width_unit": "MM",
+              "parameters": {},
+              "scale_method": "diameter",
+              "size": "9",
+              "size_map_unit_scale": "3x:0,0,0,0,0,0",
+              "size_unit": "MM",
+              "vertical_anchor_point": "2"
+            }
+          }
+        ],
+        "color": "#232323",
+        "angle_field": ""
+      }
+    }
+  ],
+  "initial_point_legend": {
+    "attribute": "role",
+    "categories": []
+  },
+  "roadview": {
+    "layers": [
+      {
+        "type": "SvgMarker",
+        "properties": {
+          "angle": "0",
+          "color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+          "fixedAspectRatio": "0",
+          "horizontal_anchor_point": "1",
+          "name": "roadview_radar.svg",
+          "offset": "0,0",
+          "offset_map_unit_scale": "3x:0,0,0,0,0,0",
+          "offset_unit": "MM",
+          "outline_color": "35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1",
+          "outline_width": "0.2",
+          "outline_width_map_unit_scale": "3x:0,0,0,0,0,0",
+          "outline_width_unit": "MM",
+          "parameters": {},
+          "scale_method": "diameter",
+          "size": "24",
+          "size_map_unit_scale": "3x:0,0,0,0,0,0",
+          "size_unit": "MM",
+          "vertical_anchor_point": "1"
+        }
+      }
+    ],
+    "color": "#232323",
+    "angle_field": "pan"
+  }
+}

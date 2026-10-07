@@ -28,6 +28,8 @@ jobs:
         run: python -m unittest discover -s tests -p "test_*.py" -v
       - name: Validate viewer JavaScript
         run: node scripts/check_viewer_js.js
+      - name: Test external bridge client
+        run: node --test tests/external_bridge_client.test.js tests/viewer_roadview_sync.test.js
       - name: Build plugin ZIP
         run: python scripts/build_plugin.py
       - uses: actions/upload-artifact@v4

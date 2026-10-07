@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 
 from qgis.core import QgsSettings
+from .mobility import validate_rest_api_key
 
 
 PLUGIN_DIR = Path(__file__).resolve().parent
@@ -47,8 +48,9 @@ def stored_rest_api_key():
 
 
 def save_rest_api_key(value):
+    value = validate_rest_api_key(value)
     settings = QgsSettings()
-    settings.setValue(QGIS_KAKAO_REST_KEY, str(value).strip())
+    settings.setValue(QGIS_KAKAO_REST_KEY, value)
     settings.sync()
 
 

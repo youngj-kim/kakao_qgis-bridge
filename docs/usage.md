@@ -76,6 +76,6 @@ GPX와 함께 생성된 QML 스타일 파일이 같은 폴더에 있으면 `GPX 
 
 ## 외부 브라우저 연동
 
-QGIS 3에서 Qt WebEngine을 사용할 수 없거나 별도 브라우저 창이 필요한 경우 `외부 브라우저 연동 창 열기...` 또는 Dock 하단의 `외부 브라우저 연동창` 버튼을 사용합니다. 외부 Viewer는 `http://localhost:8081/`의 로컬 브리지 API를 통해 QGIS와 동기화됩니다.
+QGIS 3에서 Qt WebEngine을 사용할 수 없거나 별도 브라우저 창이 필요한 경우 `외부 브라우저 연동 창 열기...` 또는 Dock 하단의 `외부 브라우저 연동창` 버튼을 사용합니다. 외부 Viewer는 기본 `http://localhost:8081/`의 로컬 브리지 API를 통해 QGIS와 동기화됩니다. 8081이 사용 중이면 8082를 자동으로 사용하므로 QGIS 3·4의 외부 연동을 동시에 실행할 수 있습니다. Kakao Developers의 `[플랫폼 키] > [JavaScript 키] > [JavaScript SDK 도메인]`에 `http://localhost:8081`과 `http://localhost:8082`를 모두 등록하세요. 제품 링크의 웹 도메인 등록과는 별도이며, 키 재발급은 필요하지 않습니다.
 
 ![External browser integration](screenshots/10-external-browser.png)

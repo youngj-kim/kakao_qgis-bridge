@@ -44,6 +44,34 @@ class MobilityResponseError(ValueError):
     pass
 
 
+def validate_rest_api_key(value):
+    """Normalize outer whitespace; reject unsafe or mistyped header values."""
+    if not isinstance(value, str):
+        raise RouteValidationError("REST API 키 형식이 올바르지 않습니다.")
+    value = value.strip()
+    if not value or any(ord(char) < 33 or ord(char) > 126 for char in value):
+        raise RouteValidationError(
+            "REST API 키 형식이 올바르지 않습니다. 공백·개행·비ASCII 문자 없이 입력하세요."
+        )
+    return value
+
+
+def route_http_error_message(status_code, payload, fallback):
+    messages = {
+        401: "REST API 키 인증에 실패했습니다. 키 설정을 확인하세요. (HTTP 401)",
+        403: "경로 요청이 거부되었습니다. 앱 권한과 API 사용 설정을 확인하세요. (HTTP 403)",
+        429: "경로 요청 한도를 초과했습니다. 잠시 후 다시 시도하세요. (HTTP 429)",
+    }
+    if status_code in messages:
+        return messages[status_code]
+    if isinstance(payload, dict):
+        for name in ("msg", "message"):
+            message = payload.get(name)
+            if isinstance(message, str) and message.strip():
+                return f"경로 탐색 실패: {message.strip()}"
+    return f"경로 탐색 실패: {fallback or f'HTTP {status_code}'}"
+
+
 @dataclass(frozen=True)
 class RouteRequestData:
     origin: tuple
@@ -69,7 +97,7 @@ def _coordinate(lon, lat, label):
     try:
         lon = float(lon)
         lat = float(lat)
-    except (TypeError, ValueError) as exc:
+    except (TypeError, ValueError, OverflowError) as exc:
         raise RouteValidationError(f"{label} 좌표가 올바르지 않습니다.") from exc
     if not math.isfinite(lon) or not math.isfinite(lat):
         raise RouteValidationError(f"{label} 좌표가 올바르지 않습니다.")
@@ -79,8 +107,12 @@ def _coordinate(lon, lat, label):
 
 
 def _json_value(raw, default, error_message):
+    if raw is None or raw == "":
+        return default
+    if not isinstance(raw, str):
+        raise RouteValidationError(error_message)
     try:
-        return json.loads(raw) if raw else default
+        return json.loads(raw)
     except json.JSONDecodeError as exc:
         raise RouteValidationError(error_message) from exc
 
@@ -99,7 +131,10 @@ def normalize_route_request(
 ):
     origin = _coordinate(origin_lon, origin_lat, "출발지")
     destination = _coordinate(destination_lon, destination_lat, "도착지")
-    priority = priority if priority in ROUTE_PRIORITIES else "RECOMMEND"
+    priority = (
+        priority if isinstance(priority, str) and priority in ROUTE_PRIORITIES
+        else "RECOMMEND"
+    )
 
     waypoint_data = _json_value(
         waypoints_json,
@@ -140,6 +175,8 @@ def normalize_route_request(
     )
     if not isinstance(avoid_data, list):
         raise RouteValidationError("경로 회피 옵션 형식이 올바르지 않습니다.")
+    if any(not isinstance(value, str) for value in avoid_data):
+        raise RouteValidationError("경로 회피 옵션 형식이 올바르지 않습니다.")
     avoid_options = tuple(
         value
         for index, value in enumerate(avoid_data)
@@ -155,7 +192,7 @@ def normalize_route_request(
         raise RouteValidationError("차량 설정 형식이 올바르지 않습니다.")
     try:
         car_type = int(vehicle_data.get("car_type", 1))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         car_type = 1
     if car_type not in ROUTE_CAR_TYPES:
         car_type = 1
@@ -217,33 +254,71 @@ def route_query_items(request):
     return items
 
 
+# Official types: https://developers.kakaomobility.com/guide/navi-api/reference.html
+# Preserve directional icons for sided entrances/exits; roundabouts stay distinct.
+GUIDANCE_CATEGORIES = {
+    0: "straight", 1: "left", 2: "right", 3: "uturn",
+    5: "left", 6: "right", 7: "transition", 8: "left", 9: "right",
+    10: "transition", 11: "left", 12: "right",
+    14: "transition", 15: "transition", 16: "transition", 17: "transition",
+    18: "right", 19: "right", 20: "right", 21: "right", 22: "right",
+    23: "other", 24: "left", 25: "left", 26: "left", 27: "left", 28: "left",
+    29: "straight",
+    **{code: "roundabout" for code in range(30, 42)},
+    42: "transition", 43: "left", 44: "right", 45: "transition",
+    46: "left", 47: "right", 48: "left", 49: "right",
+    61: "transition", 62: "transition",
+    **{code: "roundabout" for code in range(70, 82)},
+    82: "left", 83: "right", 84: "transition", 85: "transition", 86: "transition",
+    100: "start", 101: "destination", 1000: "waypoint",
+    300: "transition", 301: "transition",
+}
+
+
 def guidance_category(guide_type, guidance):
-    if guide_type == 100:
-        return "start"
-    if guide_type == 101:
-        return "destination"
-    if guide_type == 1000:
-        return "waypoint"
-    if guide_type == 3 or "유턴" in guidance:
+    if guide_type in GUIDANCE_CATEGORIES:
+        return GUIDANCE_CATEGORIES[guide_type]
+    if "유턴" in guidance:
         return "uturn"
-    if 30 <= guide_type <= 41 or 70 <= guide_type <= 81:
-        return "roundabout"
-    if guide_type in {
-        1, 5, 8, 11, 24, 25, 26, 27, 28, 43, 46, 48, 76, 77, 78, 79, 80, 82,
-    } or "좌회전" in guidance or "왼쪽" in guidance:
+    left = "좌회전" in guidance or "왼쪽" in guidance
+    right = "우회전" in guidance or "오른쪽" in guidance
+    if left and right:
+        return "other"
+    if left:
         return "left"
-    if guide_type in {
-        2, 6, 9, 12, 18, 19, 20, 21, 22, 44, 47, 49, 70, 71, 72, 73, 74, 83,
-    } or "우회전" in guidance or "오른쪽" in guidance:
+    if right:
         return "right"
-    if guide_type in {0, 29} or "직진" in guidance:
+    if "직진" in guidance:
         return "straight"
-    if guide_type in {
-        7, 8, 9, 10, 11, 12, 14, 15, 16, 17, 42, 43, 44, 45, 46, 47, 48, 49,
-        61, 62, 84, 85, 86, 300, 301,
-    }:
-        return "transition"
     return "other"
+
+
+def _response_object(value, label):
+    if not isinstance(value, dict):
+        raise MobilityResponseError(f"경로 응답의 {label} 형식이 올바르지 않습니다.")
+    return value
+
+
+def _response_list(value, label):
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise MobilityResponseError(f"경로 응답의 {label} 형식이 올바르지 않습니다.")
+    return value
+
+
+def _response_integer(value, label):
+    if value is None:
+        return 0
+    try:
+        number = int(value)
+        if isinstance(value, bool) or number < 0:
+            raise ValueError()
+        if isinstance(value, float) and value != number:
+            raise ValueError()
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise MobilityResponseError(f"경로 응답의 {label} 값이 올바르지 않습니다.") from exc
+    return number
 
 
 def _extract_guides(route, route_id):
@@ -251,14 +326,20 @@ def _extract_guides(route, route_id):
     cumulative_distance = 0
     cumulative_duration = 0
     for section_index, section in enumerate(route.get("sections") or []):
-        for guide in section.get("guides") or []:
+        # Guidance is optional: skip malformed items without losing valid geometry.
+        section_guides = section.get("guides")
+        if not isinstance(section_guides, list):
+            continue
+        for guide in section_guides:
+            if not isinstance(guide, dict):
+                continue
             try:
                 lon, lat = _coordinate(guide["x"], guide["y"], "안내 지점")
                 guide_type = int(guide.get("type") or 0)
-                distance = max(0, int(guide.get("distance") or 0))
-                duration = max(0, int(guide.get("duration") or 0))
+                distance = _response_integer(guide.get("distance"), "안내 거리")
+                duration = _response_integer(guide.get("duration"), "안내 시간")
                 road_index = int(guide.get("road_index") or 0)
-            except (KeyError, TypeError, ValueError, RouteValidationError):
+            except (KeyError, TypeError, ValueError, OverflowError):
                 continue
             cumulative_distance += distance
             cumulative_duration += duration
@@ -286,18 +367,23 @@ def _extract_guides(route, route_id):
 
 
 def parse_route_payload(payload):
-    routes = payload.get("routes") or []
+    payload = _response_object(payload, "결과")
+    routes = _response_list(payload.get("routes"), "경로 목록")
     if not routes:
         raise MobilityResponseError("경로 탐색 결과가 없습니다.")
-    route = routes[0]
+    route = _response_object(routes[0], "경로")
     if route.get("result_code") != 0:
         raise MobilityResponseError(
-            route.get("result_msg") or "경로를 찾지 못했습니다."
+            str(route.get("result_msg") or "경로를 찾지 못했습니다.")
         )
     points = []
-    for section in route.get("sections") or []:
-        for road in section.get("roads") or []:
-            vertexes = road.get("vertexes") or []
+    for section in _response_list(route.get("sections"), "구간 목록"):
+        section = _response_object(section, "구간")
+        for road in _response_list(section.get("roads"), "도로 목록"):
+            road = _response_object(road, "도로")
+            vertexes = _response_list(road.get("vertexes"), "선형 좌표")
+            if len(vertexes) % 2:
+                raise MobilityResponseError("경로 선형 좌표의 개수가 올바르지 않습니다.")
             for index in range(0, len(vertexes) - 1, 2):
                 try:
                     point = _coordinate(
@@ -305,19 +391,20 @@ def parse_route_payload(payload):
                         vertexes[index + 1],
                         "경로 선형",
                     )
-                except RouteValidationError:
-                    continue
+                except RouteValidationError as exc:
+                    raise MobilityResponseError("경로 선형 좌표가 올바르지 않습니다.") from exc
                 if not points or point != points[-1]:
                     points.append(point)
     if len(points) < 2:
         raise MobilityResponseError("경로 선형 좌표를 찾지 못했습니다.")
-    summary = route.get("summary") or {}
+    summary = route.get("summary")
+    summary = _response_object({} if summary is None else summary, "요약")
     route_id = str(payload.get("trans_id") or uuid4())
     return RouteResultData(
         route_id=route_id,
         points=tuple(points),
-        distance=int(summary.get("distance") or 0),
-        duration=int(summary.get("duration") or 0),
+        distance=_response_integer(summary.get("distance"), "거리"),
+        duration=_response_integer(summary.get("duration"), "시간"),
         guides=_extract_guides(route, route_id),
     )
 

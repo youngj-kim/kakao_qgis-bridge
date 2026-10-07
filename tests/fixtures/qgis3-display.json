@@ -1,0 +1,334 @@
+{
+  "route_layer": {
+    "name": "Kakao Mobility Route",
+    "crs": "EPSG:4326",
+    "skip": 1,
+    "fields": [
+      [
+        "distance_m",
+        "integer",
+        255,
+        0
+      ],
+      [
+        "duration_s",
+        "integer",
+        255,
+        0
+      ],
+      [
+        "guidance_count",
+        "integer",
+        255,
+        0
+      ],
+      [
+        "result_summary",
+        "string",
+        255,
+        0
+      ],
+      [
+        "priority",
+        "string",
+        16,
+        0
+      ],
+      [
+        "waypoint_count",
+        "integer",
+        255,
+        0
+      ],
+      [
+        "avoid",
+        "string",
+        128,
+        0
+      ],
+      [
+        "car_type",
+        "integer",
+        255,
+        0
+      ],
+      [
+        "car_fuel",
+        "string",
+        16,
+        0
+      ],
+      [
+        "car_hipass",
+        "integer",
+        255,
+        0
+      ]
+    ],
+    "features": [
+      {
+        "geometry": "LineString (127.001234567 37.501234567, 127.004567891 37.504567891)",
+        "attributes": [
+          100,
+          20,
+          2,
+          "경로",
+          "RECOMMEND",
+          1,
+          "toll",
+          1,
+          "GASOLINE",
+          1
+        ]
+      }
+    ]
+  },
+  "route_guidance_layer": {
+    "name": "Kakao Route Guidance",
+    "crs": "EPSG:4326",
+    "skip": 1,
+    "fields": [
+      [
+        "route_id",
+        "string",
+        64,
+        0
+      ],
+      [
+        "sequence",
+        "integer",
+        255,
+        0
+      ],
+      [
+        "section_no",
+        "integer",
+        255,
+        0
+      ],
+      [
+        "guide_type",
+        "integer",
+        255,
+        0
+      ],
+      [
+        "category",
+        "string",
+        16,
+        0
+      ],
+      [
+        "guidance",
+        "string",
+        255,
+        0
+      ],
+      [
+        "name",
+        "string",
+        128,
+        0
+      ],
+      [
+        "distance_m",
+        "integer",
+        255,
+        0
+      ],
+      [
+        "duration_s",
+        "integer",
+        255,
+        0
+      ],
+      [
+        "cum_distance_m",
+        "integer",
+        255,
+        0
+      ],
+      [
+        "cum_duration_s",
+        "integer",
+        255,
+        0
+      ],
+      [
+        "road_index",
+        "integer",
+        255,
+        0
+      ],
+      [
+        "longitude",
+        "double",
+        20,
+        5
+      ],
+      [
+        "latitude",
+        "double",
+        20,
+        5
+      ]
+    ],
+    "features": [
+      {
+        "geometry": "Point (127.003345678 37.502345678)",
+        "attributes": [
+          "route",
+          1,
+          1,
+          2,
+          "right",
+          "안내",
+          "도로",
+          12,
+          3,
+          12,
+          3,
+          0,
+          127.003345678,
+          37.502345678
+        ]
+      },
+      {
+        "geometry": "Point (127.004345678 37.502345678)",
+        "attributes": [
+          "route",
+          2,
+          1,
+          2,
+          "right",
+          "안내",
+          "도로",
+          12,
+          3,
+          24,
+          6,
+          -1,
+          127.00434567799999,
+          37.502345678
+        ]
+      }
+    ]
+  },
+  "roadview_layer": {
+    "name": "Kakao Roadview Position",
+    "crs": "EPSG:4326",
+    "skip": 1,
+    "fields": [
+      [
+        "pano_id",
+        "string",
+        32,
+        0
+      ],
+      [
+        "longitude",
+        "double",
+        20,
+        5
+      ],
+      [
+        "latitude",
+        "double",
+        20,
+        5
+      ],
+      [
+        "pan",
+        "double",
+        20,
+        5
+      ],
+      [
+        "tilt",
+        "double",
+        20,
+        5
+      ],
+      [
+        "zoom",
+        "double",
+        20,
+        5
+      ]
+    ],
+    "features": [
+      {
+        "geometry": "Point (127.001234567 37.501234567)",
+        "attributes": [
+          "pano",
+          127.001234567,
+          37.501234567,
+          123.0,
+          -5.0,
+          1.0
+        ]
+      }
+    ]
+  },
+  "route_points_layer": {
+    "name": "Kakao Route Points",
+    "crs": "EPSG:4326",
+    "skip": 1,
+    "fields": [
+      [
+        "point_id",
+        "string",
+        32,
+        0
+      ],
+      [
+        "role",
+        "string",
+        16,
+        0
+      ],
+      [
+        "longitude",
+        "double",
+        20,
+        5
+      ],
+      [
+        "latitude",
+        "double",
+        20,
+        5
+      ]
+    ],
+    "features": [
+      {
+        "geometry": "Point (127.001234567 37.501234567)",
+        "attributes": [
+          "origin",
+          "origin",
+          127.001234567,
+          37.501234567
+        ]
+      },
+      {
+        "geometry": "Point (127.004567891 37.504567891)",
+        "attributes": [
+          "destination",
+          "destination",
+          127.004567891,
+          37.504567891
+        ]
+      },
+      {
+        "geometry": "Point (127.003456789 37.503456789)",
+        "attributes": [
+          "waypoint:0",
+          "waypoint",
+          127.003456789,
+          37.503456789
+        ]
+      }
+    ]
+  },
+  "canvas_extent": "14137536.201408,4509167.204237 : 14138260.386754,4509709.775703"
+}

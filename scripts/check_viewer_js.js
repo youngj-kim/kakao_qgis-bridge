@@ -15,4 +15,10 @@ for (const source of scripts) {
   new Function(source);
 }
 
+const bridge = fs.readFileSync(path.join(__dirname, "..", "kakao_qgis_bridge", "external_bridge.py"), "utf8");
+const externalScript = bridge.match(/EXTERNAL_BRIDGE_SCRIPT = r"""([\s\S]*?)"""/)[1]
+  .replace(/<\/?script>/g, "").replace("__KAKAO_BRIDGE_TOKEN_JSON__", '"test-token"');
+new Function(externalScript);
+
 console.log(`Validated ${scripts.length} inline viewer script block(s).`);
+console.log("Validated external bridge script.");

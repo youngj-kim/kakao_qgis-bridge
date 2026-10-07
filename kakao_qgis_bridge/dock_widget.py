@@ -63,10 +63,12 @@ def web_runtime_diagnostic():
         return ""
 
     lines = [
-        "QGIS 3에서는 내장 지도 창 대신 외부 브라우저 연동 모드를 사용합니다.",
+        "현재 환경에서 Qt WebEngine 또는 WebChannel을 불러올 수 없어 외부 브라우저 연동 모드를 사용합니다.",
         "아래의 외부 연동 창 열기 버튼을 누르면 Kakao Map/Roadview가 기본 브라우저에서 열리고 QGIS와 위치가 동기화됩니다.",
         "QGIS 캔버스를 이동하면 외부 Kakao 지도와 Roadview가 따라 이동하며, 외부 Kakao 지도나 Roadview에서 이동한 위치도 QGIS에 반영됩니다.",
     ]
+    for error in WEB_RUNTIME_IMPORT_ERRORS:
+        lines.append(f"{error['component']}: {error['primary_error']}")
 
     return "\n".join(lines)
 

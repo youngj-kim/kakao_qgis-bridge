@@ -12,6 +12,7 @@ def _enum_value(scope, name, fallback_scope=None, fallback_name=None):
 
 _message_level = getattr(Qgis, "MessageLevel", Qgis)
 MSG_WARNING = _enum_value(_message_level, "Warning", Qgis, "Warning")
+MSG_INFO = _enum_value(_message_level, "Info", Qgis, "Info")
 MSG_CRITICAL = _enum_value(_message_level, "Critical", Qgis, "Critical")
 
 _message_button = getattr(QMessageBox, "StandardButton", QMessageBox)

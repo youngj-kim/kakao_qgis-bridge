@@ -1,27 +1,16 @@
 import json
 import math
-from base64 import b64encode
 from datetime import datetime
-from functools import lru_cache
 from pathlib import Path
 from uuid import uuid4
 
 from qgis.core import (
-    Qgis,
-    QgsCategorizedSymbolRenderer,
     QgsCoordinateReferenceSystem,
     QgsCoordinateTransform,
     QgsFeature,
-    QgsGeometry,
-    QgsLineSymbol,
-    QgsMarkerSymbol,
     QgsMessageLog,
     QgsPointXY,
     QgsProject,
-    QgsProperty,
-    QgsRendererCategory,
-    QgsSvgMarkerSymbolLayer,
-    QgsVectorFileWriter,
     QgsVectorLayer,
 )
 from qgis.PyQt.QtCore import QTimer, Qt, QUrl
@@ -37,17 +26,21 @@ from .compat import (
     MSGBOX_NO,
     MSGBOX_YES,
     MSG_CRITICAL,
+    MSG_INFO,
     MSG_WARNING,
-    WRITE_APPEND_ADD_FIELDS,
-    WRITE_APPEND_NO_FIELDS,
-    WRITE_OVERWRITE_FILE,
-    WRITE_OVERWRITE_LAYER,
-    save_style_to_database,
 )
 from .dock_widget import KakaoMapDockWidget
 from .external_bridge import KakaoExternalBridgeServer
-from .history_export import GpxWriter
+from .history_export_service import HistoryExportService
+from . import history_values
 from .history_repository import HistoryRepository
+from .history_operations import HistoryOperationError
+from .history_import_service import HistoryImportService
+from .style_factory import StyleFactory
+from .display_layers import DisplayLayerManager
+from .history_formats import (
+    ROUTE_HISTORY_LAYER_NAME, GUIDANCE_HISTORY_LAYER_NAME,
+)
 from .mobility import (
     ROUTE_AVOID_OPTIONS,
     ROUTE_CAR_FUELS,
@@ -76,10 +69,8 @@ from .sync_controller import CanvasSyncController
 
 MENU_NAME = "&Kakao QGIS Bridge"
 LOG_TAG = "Kakao QGIS Bridge"
-
-
-ROUTE_HISTORY_LAYER_NAME = "kakao_route_history"
-GUIDANCE_HISTORY_LAYER_NAME = "kakao_guidance_history"
+# An internal origin cannot collide with an external browser's client ID.
+_DOCK_SYNC_SOURCE = object()
 
 
 class KakaoQgisBridgePlugin:
@@ -96,18 +87,18 @@ class KakaoQgisBridgePlugin:
         self.export_shapefile_action = None
         self.export_gpx_action = None
         self.dock = None
-        self.roadview_layer = None
-        self.roadview_feature_id = None
-        self.route_layer = None
-        self.route_guidance_layer = None
-        self.route_guidance_feature_ids = {}
-        self.route_points_layer = None
-        self.route_point_feature_ids = {}
+        self.style_factory = StyleFactory()
+        self.display_layers = DisplayLayerManager(QgsProject.instance(), self.style_factory)
         self.history_repository = HistoryRepository(
-            self._route_line_symbol,
-            self._route_guidance_renderer,
+            self.style_factory.route_line_symbol,
+            self.style_factory.route_guidance_renderer,
         )
+        self.history_import_service = HistoryImportService(self.history_repository)
         self.active_route_history_id = None
+        self._current_guidance_payload = {
+            "history_id": "", "route_id": "", "summary": {}, "path": [], "guides": [],
+        }
+        self._last_route_status = None
         self.mobility_client = MobilityClient()
         self.mobility_client.succeeded.connect(self._handle_route_result)
         self.mobility_client.failed.connect(self._handle_route_failure)
@@ -117,11 +108,77 @@ class KakaoQgisBridgePlugin:
         )
         self.sync_controller.syncRequested.connect(self._sync_canvas_center)
         self.external_bridge_server = None
+        self._processing_external_bridge_events = False
         self.external_bridge_timer = QTimer()
         self.external_bridge_timer.setInterval(120)
         self.external_bridge_timer.timeout.connect(
             self._process_external_bridge_events
         )
+
+
+    @property
+    def roadview_layer(self):
+        return self.display_layers.roadview_layer
+
+    @roadview_layer.setter
+    def roadview_layer(self, value):
+        self.display_layers.roadview_layer = value
+
+    @property
+    def roadview_feature_id(self):
+        return self.display_layers.roadview_feature_id
+
+    @roadview_feature_id.setter
+    def roadview_feature_id(self, value):
+        self.display_layers.roadview_feature_id = value
+
+    @property
+    def route_layer(self):
+        return self.display_layers.route_layer
+
+    @route_layer.setter
+    def route_layer(self, value):
+        self.display_layers.route_layer = value
+
+    @property
+    def route_guidance_layer(self):
+        return self.display_layers.route_guidance_layer
+
+    @route_guidance_layer.setter
+    def route_guidance_layer(self, value):
+        self.display_layers.route_guidance_layer = value
+
+    @property
+    def route_guidance_feature_ids(self):
+        return self.display_layers.route_guidance_feature_ids
+
+    @route_guidance_feature_ids.setter
+    def route_guidance_feature_ids(self, value):
+        self.display_layers.route_guidance_feature_ids = value
+
+    @property
+    def route_points_layer(self):
+        return self.display_layers.route_points_layer
+
+    @route_points_layer.setter
+    def route_points_layer(self, value):
+        self.display_layers.route_points_layer = value
+
+    @property
+    def route_point_feature_ids(self):
+        return self.display_layers.route_point_feature_ids
+
+    @route_point_feature_ids.setter
+    def route_point_feature_ids(self, value):
+        self.display_layers.route_point_feature_ids = value
+
+    @property
+    def _route_point_categories(self):
+        return self.display_layers.route_point_categories
+
+    @_route_point_categories.setter
+    def _route_point_categories(self, value):
+        self.display_layers.route_point_categories = value
 
     @property
     def route_history_layer(self):
@@ -291,10 +348,7 @@ class KakaoQgisBridgePlugin:
             self.dock.deleteLater()
             self.dock = None
 
-        self._remove_roadview_layer()
-        self._remove_route_layer()
-        self._remove_route_guidance_layer()
-        self._remove_route_points_layer()
+        self.display_layers.remove_all()
         self.history_repository.clear()
 
     def toggle_dock(self, checked):
@@ -401,20 +455,27 @@ class KakaoQgisBridgePlugin:
             )
             return False
 
-        save_rest_api_key(value)
+        try:
+            save_rest_api_key(value)
+        except RouteValidationError as exc:
+            QMessageBox.warning(
+                self.iface.mainWindow(), "Kakao QGIS Bridge", str(exc)
+            )
+            return False
         return True
 
     def _hide_dock(self):
         if self.dock is not None:
             self.dock.hide()
-        self._deactivate_canvas_sync()
+        if self.external_bridge_server is None:
+            self._deactivate_canvas_sync()
 
     def _ensure_dock(self):
         if self.dock is not None:
             return
 
         self.dock = KakaoMapDockWidget(self.iface.mainWindow())
-        self.dock.centerRequested.connect(self._handle_viewer_moved)
+        self.dock.centerRequested.connect(self._handle_dock_viewer_moved)
         self.dock.roadviewStateChanged.connect(self._update_roadview_layer)
         self.dock.routeRequested.connect(self._request_route)
         self.dock.routePointChanged.connect(self._set_route_point)
@@ -451,20 +512,33 @@ class KakaoQgisBridgePlugin:
 
     def _ensure_external_bridge(self):
         if self.external_bridge_server is None:
-            self.external_bridge_server = KakaoExternalBridgeServer()
+            self.external_bridge_server = KakaoExternalBridgeServer(fallback_ports=(8082,))
             try:
+                self.external_bridge_server.emit_signal(
+                    "routeGuidanceChanged",
+                    json.dumps(self._current_guidance_payload, ensure_ascii=False),
+                )
+                self.external_bridge_server.emit_signal(
+                    "routeHistoryChanged",
+                    json.dumps(self._route_history_payload(self.active_route_history_id), ensure_ascii=False),
+                )
+                if self._last_route_status is not None:
+                    self.external_bridge_server.emit_signal("routeStatusChanged", *self._last_route_status)
                 self.external_bridge_server.start()
             except OSError as exc:
                 QgsMessageLog.logMessage(str(exc), LOG_TAG, MSG_WARNING)
                 self.iface.messageBar().pushWarning(
                     "Kakao QGIS Bridge",
-                    "외부 브라우저 연동 서버를 시작하지 못했습니다. localhost:8081 포트 사용 여부를 확인하세요.",
+                    "외부 브라우저 연동 서버를 시작하지 못했습니다. "
+                    "localhost:8081과 localhost:8082를 다른 프로그램이 사용 중인지 확인하세요. "
+                    "사용 중인 외부 연동 서버를 종료한 뒤 다시 시도하세요.",
                 )
                 self.external_bridge_server = None
                 return None
 
         if not self.external_bridge_timer.isActive():
             self.external_bridge_timer.start()
+        self._sync_canvas_center()
         return self.external_bridge_server
 
     def _stop_external_bridge(self):
@@ -484,20 +558,41 @@ class KakaoQgisBridgePlugin:
             return
 
         self._activate_canvas_sync()
+        self.iface.messageBar().pushInfo(
+            "Kakao QGIS Bridge",
+            f"외부 연동 주소: {server.origin} · "
+            "Kakao Developers의 기존 JavaScript 키에 이 주소를 SDK 도메인으로 등록하세요. "
+            "동시 사용 시 http://localhost:8081과 http://localhost:8082를 모두 등록하세요.",
+        )
         QDesktopServices.openUrl(QUrl(server.url))
 
     def _process_external_bridge_events(self):
-        if self.external_bridge_server is None:
+        server = self.external_bridge_server
+        if server is None or self._processing_external_bridge_events:
             return
 
-        for event in self.external_bridge_server.drain_events():
-            payload = event.get("payload", {})
-            event_type = event.get("type")
+        self._processing_external_bridge_events = True
+        try:
+            self._dispatch_external_bridge_events(server)
+        finally:
+            self._processing_external_bridge_events = False
+
+    def _dispatch_external_bridge_events(self, server):
+        for event in server.drain_events():
+            # A dialog can allow plugin shutdown before processing resumes.
+            if self.external_bridge_server is not server:
+                break
+            event_type = None
             try:
+                event_type = event.get("type")
+                payload = event.get("payload", {})
+                if not isinstance(payload, dict):
+                    raise TypeError("외부 이벤트 payload는 객체여야 합니다.")
                 if event_type == "move_center":
                     self._handle_viewer_moved(
                         float(payload.get("lon")),
                         float(payload.get("lat")),
+                        source=event.get("source"),
                     )
                 elif event_type == "roadview_state":
                     self._update_roadview_layer(
@@ -557,13 +652,23 @@ class KakaoQgisBridgePlugin:
                     )
                 elif event_type == "refresh_route_history":
                     self._refresh_route_history_panel()
-            except (TypeError, ValueError) as exc:
-                QgsMessageLog.logMessage(str(exc), LOG_TAG, MSG_WARNING)
+            except Exception as exc:
+                QgsMessageLog.logMessage(
+                    f"외부 이벤트 {event_type or '미상'} 처리 실패 "
+                    f"({type(exc).__name__}): {exc}", LOG_TAG, MSG_WARNING,
+                )
                 if event_type == "request_route":
-                    self._set_route_status(
-                        False,
-                        "외부 브라우저의 경로 요청을 처리하지 못했습니다.",
-                    )
+                    try:
+                        self._set_route_status(
+                            False,
+                            "외부 브라우저의 경로 요청을 처리하지 못했습니다.",
+                        )
+                    except Exception as status_exc:
+                        QgsMessageLog.logMessage(
+                            f"경로 요청 실패 안내를 전달하지 못했습니다 "
+                            f"({type(status_exc).__name__}): {status_exc}",
+                            LOG_TAG, MSG_WARNING,
+                        )
 
     def _sync_action_state(self, visible):
         if self.action is not None:
@@ -593,7 +698,7 @@ class KakaoQgisBridgePlugin:
     def _schedule_canvas_sync(self, *_args):
         self.sync_controller.schedule()
 
-    def _sync_canvas_center(self):
+    def _sync_canvas_center(self, source=None):
         if not self._has_canvas_sync_target():
             return
 
@@ -608,16 +713,21 @@ class KakaoQgisBridgePlugin:
             )
             return
 
-        if self.dock is not None and self.dock.isVisible():
+        if source is not _DOCK_SYNC_SOURCE and self.dock is not None and self.dock.isVisible():
             self.dock.set_center(lon, lat)
         if self.external_bridge_server is not None:
-            self.external_bridge_server.set_center(lon, lat)
+            self.external_bridge_server.set_center(
+                lon, lat, source=None if source is _DOCK_SYNC_SOURCE else source,
+            )
 
     def _has_canvas_sync_target(self):
         dock_visible = self.dock is not None and self.dock.isVisible()
         return dock_visible or self.external_bridge_server is not None
 
-    def _handle_viewer_moved(self, lon, lat):
+    def _handle_dock_viewer_moved(self, lon, lat):
+        self._handle_viewer_moved(lon, lat, source=_DOCK_SYNC_SOURCE)
+
+    def _handle_viewer_moved(self, lon, lat, source=None):
         if not math.isfinite(lon) or not math.isfinite(lat):
             return
         if not -180.0 <= lon <= 180.0 or not -90.0 <= lat <= 90.0:
@@ -634,94 +744,20 @@ class KakaoQgisBridgePlugin:
             )
             return
 
-        self.sync_controller.begin_reverse_sync()
+        self.sync_controller.begin_reverse_sync(center)
         canvas.setCenter(center)
         canvas.refresh()
+        # The canvas echo is suppressed, but all other viewers still need this move.
+        self._sync_canvas_center(source=source)
 
     def _update_roadview_layer(self, lon, lat, pan, tilt, zoom, pano_id):
-        values = (lon, lat, pan, tilt, zoom)
-        if not all(math.isfinite(value) for value in values):
-            return
-        if not -180.0 <= lon <= 180.0 or not -90.0 <= lat <= 90.0:
-            return
-
-        layer = self._ensure_roadview_layer()
-        provider = layer.dataProvider()
-        geometry = QgsGeometry.fromPointXY(QgsPointXY(lon, lat))
-        attributes = [pano_id, lon, lat, pan, tilt, zoom]
-
-        feature_valid = (
-            self.roadview_feature_id is not None
-            and layer.getFeature(self.roadview_feature_id).isValid()
-        )
-        if not feature_valid:
-            feature = QgsFeature(layer.fields())
-            feature.setGeometry(geometry)
-            feature.setAttributes(attributes)
-            if provider.addFeature(feature):
-                self.roadview_feature_id = feature.id()
-        else:
-            provider.changeGeometryValues(
-                {self.roadview_feature_id: geometry}
-            )
-            provider.changeAttributeValues(
-                {
-                    self.roadview_feature_id: {
-                        index: value
-                        for index, value in enumerate(attributes)
-                    }
-                }
-            )
-
-        layer.updateExtents()
-        layer.triggerRepaint()
+        return self.display_layers.update_roadview_layer(lon, lat, pan, tilt, zoom, pano_id)
 
     def _ensure_roadview_layer(self):
-        project = QgsProject.instance()
-        if self.roadview_layer is not None:
-            try:
-                if project.mapLayer(self.roadview_layer.id()) is not None:
-                    return self.roadview_layer
-            except RuntimeError:
-                pass
-
-        uri = (
-            "Point?crs=EPSG:4326"
-            "&field=pano_id:string(32)"
-            "&field=longitude:double"
-            "&field=latitude:double"
-            "&field=pan:double"
-            "&field=tilt:double"
-            "&field=zoom:double"
-        )
-        layer = QgsVectorLayer(uri, "Kakao Roadview Position", "memory")
-        layer.setCustomProperty("skipMemoryLayersCheck", 1)
-
-        svg_path = PLUGIN_DIR / "web" / "roadview_radar.svg"
-        symbol = QgsMarkerSymbol(
-            [QgsSvgMarkerSymbolLayer(str(svg_path), 24.0)]
-        )
-        symbol.setDataDefinedAngle(QgsProperty.fromField("pan"))
-        layer.renderer().setSymbol(symbol)
-
-        project.addMapLayer(layer)
-        self.roadview_layer = layer
-        self.roadview_feature_id = None
-        return layer
+        return self.display_layers.ensure_roadview_layer()
 
     def _remove_roadview_layer(self):
-        if self.roadview_layer is None:
-            return
-
-        project = QgsProject.instance()
-        try:
-            layer_id = self.roadview_layer.id()
-            if project.mapLayer(layer_id) is not None:
-                project.removeMapLayer(layer_id)
-        except RuntimeError:
-            pass
-        self.roadview_layer = None
-        self.roadview_feature_id = None
+        return self.display_layers.remove_roadview_layer()
 
     def _request_route(
         self,
@@ -855,8 +891,8 @@ class KakaoQgisBridgePlugin:
             "guides": guides,
         }
         self._create_route_guidance_layer(guides)
-        self.active_route_history_id = history_id
-        self._append_route_history(
+        self.active_route_history_id = None
+        history_saved = self._append_route_history(
             history_id=history_id,
             route_id=route_id,
             searched_at=searched_at,
@@ -875,13 +911,11 @@ class KakaoQgisBridgePlugin:
             vehicle_options=vehicle_options,
             guides=guides,
         )
-        if self.dock is not None:
-            self.dock.set_route_guidance(guidance_payload)
-        if self.external_bridge_server is not None:
-            self.external_bridge_server.emit_signal(
-                "routeGuidanceChanged",
-                json.dumps(guidance_payload, ensure_ascii=False),
-            )
+        if history_saved:
+            self.active_route_history_id = history_id
+        else:
+            guidance_payload["history_id"] = ""
+        self._set_route_guidance(guidance_payload)
 
         distance_text = f"{distance / 1000:.1f} km"
         duration_text = f"{max(1, round(duration / 60))}분"
@@ -901,8 +935,13 @@ class KakaoQgisBridgePlugin:
             f"{priority_text} 경로 생성 완료: {distance_text}, "
             f"예상 {duration_text}{waypoint_text}{avoid_text}{vehicle_text}"
         )
-        self._set_route_status(True, message)
-        self.iface.messageBar().pushSuccess("Kakao QGIS Bridge", message)
+        if history_saved:
+            self._set_route_status(True, message)
+            self.iface.messageBar().pushSuccess("Kakao QGIS Bridge", message)
+        else:
+            message = "경로는 생성했지만 이력 저장에 실패했습니다. " + message
+            self._set_route_status(False, message)
+            self.iface.messageBar().pushWarning("Kakao QGIS Bridge", message)
 
     def _append_route_history(
         self,
@@ -924,31 +963,16 @@ class KakaoQgisBridgePlugin:
         vehicle_options,
         guides,
     ):
-        if not self.history_repository.append(
-            history_id,
-            route_id,
-            searched_at,
-            points,
-            origin,
-            destination,
-            origin_label,
-            destination_label,
-            waypoints,
-            distance,
-            duration,
-            guidance_count,
-            result_summary,
-            priority,
-            avoid_options,
-            vehicle_options,
-            guides,
-        ):
-            QgsMessageLog.logMessage(
-                "경로 검색 이력을 메모리 레이어에 추가하지 못했습니다.",
-                LOG_TAG,
-                MSG_WARNING,
+        try:
+            self.history_repository.append(
+                history_id, route_id, searched_at, points, origin, destination,
+                origin_label, destination_label, waypoints, distance, duration,
+                guidance_count, result_summary, priority, avoid_options,
+                vehicle_options, guides,
             )
-            return
+        except HistoryOperationError as exc:
+            self._handle_history_operation_error(exc)
+            return False
 
         if self.save_history_action is not None:
             self.save_history_action.setEnabled(True)
@@ -959,6 +983,28 @@ class KakaoQgisBridgePlugin:
         if self.export_gpx_action is not None:
             self.export_gpx_action.setEnabled(True)
         self._sync_route_history_panel(history_id)
+        return True
+
+    def _handle_history_operation_error(self, exc):
+        QgsMessageLog.logMessage(str(exc), LOG_TAG, MSG_CRITICAL)
+        display_message = str(exc)
+        try:
+            if isinstance(exc, HistoryOperationError) and not exc.recovered:
+                route_count = self.route_history_layer.featureCount() if self.route_history_layer is not None else 0
+                guide_count = self.guidance_history_layer.featureCount() if self.guidance_history_layer is not None else 0
+                display_message += f"\n현재 남은 이력: 경로 {route_count}건, 안내 {guide_count}건."
+                if self.active_route_history_id:
+                    route = self._route_feature_for_history(self.active_route_history_id)
+                    guides = self._guidance_features_for_history(self.active_route_history_id)
+                    if route is None or len(guides) != self._safe_number(route["guidance_count"]):
+                        self._clear_current_route_display()
+            # Recovery can change feature IDs; viewer payloads use history IDs.
+            self._sync_route_history_panel(self.active_route_history_id)
+            self._update_history_action_state()
+        except RuntimeError as refresh_error:
+            # An invalid/deleted Qt layer must not suppress the original error UI.
+            QgsMessageLog.logMessage(str(refresh_error), LOG_TAG, MSG_WARNING)
+        QMessageBox.critical(self.iface.mainWindow(), "Kakao QGIS Bridge", display_message)
 
     def _ensure_route_history_layers(self):
         return self.history_repository.ensure_layers()
@@ -981,44 +1027,36 @@ class KakaoQgisBridgePlugin:
 
         input_path = Path(filename)
         try:
-            route_source, guidance_source = self._open_history_sources(
-                input_path
-            )
-            route_count = self._append_imported_history(
-                route_source,
-                self.route_history_layer,
-                "LineString",
-                self._full_history_field_specs("route"),
-            )
-            guidance_count = self._append_imported_history(
-                guidance_source,
-                self.guidance_history_layer,
-                "Point",
-                self._full_history_field_specs("guidance"),
-            )
+            report = self.history_import_service.import_file(input_path)
+            route_count, guidance_count = report
         except RuntimeError as exc:
-            QgsMessageLog.logMessage(
-                str(exc),
-                LOG_TAG,
-                MSG_CRITICAL,
-            )
-            QMessageBox.critical(
-                self.iface.mainWindow(),
-                "Kakao QGIS Bridge",
-                f"경로 이력 불러오기에 실패했습니다.\n\n{exc}",
-            )
+            self._handle_history_operation_error(exc)
             return
 
         self._update_history_action_state()
         self._sync_route_history_panel()
         if route_count == 0 and guidance_count == 0:
-            message = "선택한 파일의 이력이 이미 현재 세션에 있습니다."
+            if report.skipped_routes or report.skipped_guides:
+                message = "선택한 파일의 이력이 이미 현재 세션에 있습니다."
+            else:
+                message = "선택한 파일에 불러올 경로·안내 이력이 없습니다."
         else:
             message = (
                 f"경로 이력 불러오기 완료: 경로 {route_count}건, "
                 f"안내 {guidance_count}건"
         )
+        if report.duplicates or report.skipped_routes or report.skipped_guides:
+            message += (f" (기존 경로 {report.skipped_routes}건·안내 {report.skipped_guides}건 건너뜀, "
+                        f"파일 중복 {report.duplicates}건 제거)")
+            QgsMessageLog.logMessage(
+                f"기존 경로 {report.skipped_routes}건·안내 {report.skipped_guides}건 건너뜀, "
+                f"파일 내부 중복 {report.duplicates}건 제거", LOG_TAG, MSG_INFO)
         self.iface.messageBar().pushSuccess("Kakao QGIS Bridge", message)
+        if report.warnings:
+            QgsMessageLog.logMessage("\n".join(report.warnings), LOG_TAG, MSG_WARNING)
+            self.iface.messageBar().pushWarning(
+                "Kakao QGIS Bridge", f"불러오기 경고 {len(report.warnings)}건: "
+                f"{report.warnings[0]} 자세한 내용은 로그 메시지를 확인하세요.")
 
     def _load_styled_gpx(self, _checked=False):
         project_home = QgsProject.instance().homePath()
@@ -1095,172 +1133,6 @@ class KakaoQgisBridgePlugin:
         if missing_styles:
             message += f" 누락된 QML: {', '.join(missing_styles)}"
         self.iface.messageBar().pushSuccess("Kakao QGIS Bridge", message)
-
-    def _open_history_sources(self, input_path):
-        suffix = input_path.suffix.lower()
-        if suffix == ".gpkg":
-            route_source = QgsVectorLayer(
-                f"{input_path}|layername={ROUTE_HISTORY_LAYER_NAME}",
-                ROUTE_HISTORY_LAYER_NAME,
-                "ogr",
-            )
-            guidance_source = QgsVectorLayer(
-                f"{input_path}|layername={GUIDANCE_HISTORY_LAYER_NAME}",
-                GUIDANCE_HISTORY_LAYER_NAME,
-                "ogr",
-            )
-        elif suffix == ".geojson":
-            route_path, guidance_path = self._geojson_output_paths(input_path)
-            route_source = QgsVectorLayer(
-                str(route_path),
-                "Kakao Route History",
-                "ogr",
-            )
-            guidance_source = QgsVectorLayer(
-                str(guidance_path),
-                "Kakao Guidance History",
-                "ogr",
-            )
-        elif suffix == ".shp":
-            route_path, guidance_path = self._paired_output_paths(
-                input_path,
-                ".shp",
-            )
-            route_source = QgsVectorLayer(
-                str(route_path),
-                "Kakao Route History",
-                "ogr",
-            )
-            guidance_source = QgsVectorLayer(
-                str(guidance_path),
-                "Kakao Guidance History",
-                "ogr",
-            )
-        else:
-            raise RuntimeError("지원하지 않는 이력 파일 형식입니다.")
-
-        if not route_source.isValid():
-            raise RuntimeError("경로 이력 레이어를 열지 못했습니다.")
-        if not guidance_source.isValid():
-            raise RuntimeError("안내 이력 레이어를 열지 못했습니다.")
-
-        self._ensure_route_history_layers()
-        return route_source, guidance_source
-
-    def _append_imported_history(
-        self,
-        source_layer,
-        target_layer,
-        geometry_name,
-        field_specs,
-    ):
-        existing_ids = self._memory_history_ids(target_layer)
-        pending_layer = QgsVectorLayer(
-            f"{geometry_name}?crs=EPSG:4326",
-            "Imported Kakao Route History",
-            "memory",
-        )
-        provider = pending_layer.dataProvider()
-        provider.addAttributes(list(target_layer.fields()))
-        pending_layer.updateFields()
-
-        source_fields = set(source_layer.fields().names())
-        features = []
-        for source_feature in source_layer.getFeatures():
-            history_id = self._history_value(
-                source_feature,
-                source_fields,
-                "history_id",
-                "hist_id",
-            )
-            if not history_id or str(history_id) in existing_ids:
-                continue
-
-            feature = QgsFeature(pending_layer.fields())
-            feature.setGeometry(source_feature.geometry())
-            feature.setAttributes(
-                [
-                    self._history_value(
-                        source_feature,
-                        source_fields,
-                        spec["source"],
-                        spec["name"],
-                    )
-                    for spec in field_specs
-                ]
-            )
-            features.append(feature)
-
-        if features:
-            provider.addFeatures(features)
-            pending_layer.updateExtents()
-            target_layer.dataProvider().addFeatures(features)
-            target_layer.updateExtents()
-
-        return len(features)
-
-    @staticmethod
-    def _memory_history_ids(layer):
-        history_index = layer.fields().indexOf("history_id")
-        if history_index < 0:
-            return set()
-        return {
-            str(feature[history_index])
-            for feature in layer.getFeatures()
-            if feature[history_index]
-        }
-
-    @staticmethod
-    def _history_value(feature, source_fields, full_name, short_name):
-        if full_name in source_fields:
-            return feature[full_name]
-        if short_name in source_fields:
-            return feature[short_name]
-        return None
-
-    def _full_history_field_specs(self, layer_type):
-        if layer_type == "route":
-            return [
-                {"source": "schema_ver", "name": "schema_v"},
-                {"source": "history_id", "name": "hist_id"},
-                {"source": "route_id", "name": "route_id"},
-                {"source": "searched_at", "name": "searched"},
-                {"source": "origin_lon", "name": "org_lon"},
-                {"source": "origin_lat", "name": "org_lat"},
-                {"source": "origin_name", "name": "org_name"},
-                {"source": "destination_lon", "name": "dst_lon"},
-                {"source": "destination_lat", "name": "dst_lat"},
-                {"source": "destination_name", "name": "dst_name"},
-                {"source": "waypoints_json", "name": "waypts"},
-                {"source": "distance_m", "name": "dist_m"},
-                {"source": "duration_s", "name": "dur_s"},
-                {"source": "guidance_count", "name": "guide_cnt"},
-                {"source": "result_summary", "name": "summary"},
-                {"source": "priority", "name": "priority"},
-                {"source": "avoid", "name": "avoid"},
-                {"source": "car_type", "name": "car_type"},
-                {"source": "car_fuel", "name": "car_fuel"},
-                {"source": "car_hipass", "name": "car_hipass"},
-            ]
-        return [
-            {"source": "schema_ver", "name": "schema_v"},
-            {"source": "history_id", "name": "hist_id"},
-            {"source": "route_id", "name": "route_id"},
-            {"source": "searched_at", "name": "searched"},
-            {"source": "sequence", "name": "seq"},
-            {"source": "section_no", "name": "sect_no"},
-            {"source": "guide_type", "name": "g_type"},
-            {"source": "category", "name": "category"},
-            {"source": "guidance", "name": "guidance"},
-            {"source": "name", "name": "name"},
-            {"source": "distance_m", "name": "dist_m"},
-            {"source": "duration_s", "name": "dur_s"},
-            {"source": "cum_distance_m", "name": "cum_dist"},
-            {"source": "cum_duration_s", "name": "cum_dur"},
-            {"source": "road_index", "name": "road_idx"},
-            {"source": "longitude", "name": "lon"},
-            {"source": "latitude", "name": "lat"},
-        ]
 
     def _sync_route_history_panel(self, selected_history_id=None):
         payload = self._route_history_payload(selected_history_id)
@@ -1361,13 +1233,9 @@ class KakaoQgisBridgePlugin:
         center = route_feature.geometry().centroid().asPoint()
         if self.dock is not None:
             self.dock.set_center(center.x(), center.y())
-            self.dock.set_route_guidance(guidance_payload)
         if self.external_bridge_server is not None:
             self.external_bridge_server.set_center(center.x(), center.y())
-            self.external_bridge_server.emit_signal(
-                "routeGuidanceChanged",
-                json.dumps(guidance_payload, ensure_ascii=False),
-            )
+        self._set_route_guidance(guidance_payload)
         self._sync_route_history_panel(history_id)
         self.iface.messageBar().pushInfo(
             "Kakao QGIS Bridge",
@@ -1416,22 +1284,11 @@ class KakaoQgisBridgePlugin:
 
         was_active_history = history_id == self.active_route_history_id
 
-        if self.route_history_layer is not None:
-            self.route_history_layer.dataProvider().deleteFeatures(
-                [route_feature.id()]
-            )
-            self.route_history_layer.updateExtents()
-
-        if self.guidance_history_layer is not None:
-            guidance_ids = [
-                feature.id()
-                for feature in self._guidance_features_for_history(history_id)
-            ]
-            if guidance_ids:
-                self.guidance_history_layer.dataProvider().deleteFeatures(
-                    guidance_ids
-                )
-                self.guidance_history_layer.updateExtents()
+        try:
+            self.history_repository.delete_history(history_id)
+        except HistoryOperationError as exc:
+            self._handle_history_operation_error(exc)
+            return
 
         if was_active_history:
             self._clear_current_route_display()
@@ -1460,22 +1317,11 @@ class KakaoQgisBridgePlugin:
         if answer != MSGBOX_YES:
             return
 
-        if self.route_history_layer is not None:
-            route_ids = [feature.id() for feature in self.route_history_layer.getFeatures()]
-            if route_ids:
-                self.route_history_layer.dataProvider().deleteFeatures(route_ids)
-                self.route_history_layer.updateExtents()
-
-        if self.guidance_history_layer is not None:
-            guidance_ids = [
-                feature.id()
-                for feature in self.guidance_history_layer.getFeatures()
-            ]
-            if guidance_ids:
-                self.guidance_history_layer.dataProvider().deleteFeatures(
-                    guidance_ids
-                )
-                self.guidance_history_layer.updateExtents()
+        try:
+            self.history_repository.delete_all()
+        except HistoryOperationError as exc:
+            self._handle_history_operation_error(exc)
+            return
 
         self._clear_current_route_display()
         self._sync_route_history_panel()
@@ -1483,6 +1329,13 @@ class KakaoQgisBridgePlugin:
         self.iface.messageBar().pushInfo(
             "Kakao QGIS Bridge",
             "전체 경로 이력을 삭제했습니다.",
+        )
+
+    def _history_export_service(self):
+        return HistoryExportService(
+            QgsProject.instance().transformContext(),
+            route_line_symbol_factory=self.style_factory.route_line_symbol,
+            gpx_waypoint_renderer_factory=self.style_factory.gpx_waypoint_renderer,
         )
 
     def _export_single_route_history(self, history_id):
@@ -1610,6 +1463,7 @@ class KakaoQgisBridgePlugin:
             "Selected Kakao Guidance History",
         )
 
+        shapefile_warning = ""
         try:
             if selected_format == formats[0]:
                 output_path = Path(filename)
@@ -1642,6 +1496,7 @@ class KakaoQgisBridgePlugin:
                 )
                 output_parent = route_path.parent
             elif selected_format == formats[2]:
+                shapefile_warning = self._shapefile_loss_warning(route_layer, guidance_layer)
                 route_path, guidance_path = self._paired_output_paths(
                     filename,
                     ".shp",
@@ -1684,13 +1539,12 @@ class KakaoQgisBridgePlugin:
             )
             return
 
-        self.iface.messageBar().pushSuccess(
-            "Kakao QGIS Bridge",
-            (
-                f"{success_label} 완료: 경로 {route_count}건, "
-                f"안내 {guidance_count}건 ({output_parent})"
-            ),
-        )
+        message = (f"{success_label} 완료: 경로 {route_count}건, "
+                   f"안내 {guidance_count}건 ({output_parent})")
+        if shapefile_warning:
+            self.iface.messageBar().pushWarning("Kakao QGIS Bridge", message + " " + shapefile_warning)
+        else:
+            self.iface.messageBar().pushSuccess("Kakao QGIS Bridge", message)
 
     def _update_history_action_state(self):
         has_history = (
@@ -1707,23 +1561,10 @@ class KakaoQgisBridgePlugin:
             self.export_gpx_action.setEnabled(has_history)
 
     def _route_feature_for_history(self, history_id):
-        if self.route_history_layer is None:
-            return None
-        for feature in self.route_history_layer.getFeatures():
-            if str(feature["history_id"]) == history_id:
-                return QgsFeature(feature)
-        return None
+        return self.history_repository.route_for_history(history_id)
 
     def _guidance_features_for_history(self, history_id):
-        if self.guidance_history_layer is None:
-            return []
-        features = [
-            feature
-            for feature in self.guidance_history_layer.getFeatures()
-            if str(feature["history_id"]) == history_id
-        ]
-        features.sort(key=lambda feature: self._safe_number(feature["sequence"]))
-        return [QgsFeature(feature) for feature in features]
+        return self.history_repository.guidance_for_history(history_id)
 
     def _route_input_payload_from_history(self, route_feature):
         waypoints = []
@@ -1875,12 +1716,7 @@ class KakaoQgisBridgePlugin:
 
     @staticmethod
     def _route_points_from_geometry(geometry):
-        if geometry is None or geometry.isEmpty():
-            return []
-        if geometry.isMultipart():
-            parts = geometry.asMultiPolyline()
-            return parts[0] if parts else []
-        return geometry.asPolyline()
+        return history_values.route_points_from_geometry(geometry)
 
     @staticmethod
     def _route_path_payload(points):
@@ -1960,21 +1796,11 @@ class KakaoQgisBridgePlugin:
 
     @staticmethod
     def _safe_number(value):
-        try:
-            if value is None:
-                return 0
-            return int(value)
-        except (TypeError, ValueError):
-            return 0
+        return history_values.safe_number(value)
 
     @staticmethod
     def _safe_float(value):
-        try:
-            if value is None:
-                return 0.0
-            return float(value)
-        except (TypeError, ValueError):
-            return 0.0
+        return history_values.safe_float(value)
 
     def _save_route_history_geopackage(self, _checked=False):
         if (
@@ -2172,6 +1998,9 @@ class KakaoQgisBridgePlugin:
                 return
 
         try:
+            shapefile_warning = self._shapefile_loss_warning(
+                self.route_history_layer, self.guidance_history_layer,
+            )
             route_count = self._write_shapefile_history_layer(
                 self.route_history_layer,
                 route_path,
@@ -2203,7 +2032,10 @@ class KakaoQgisBridgePlugin:
             f"Shapefile 내보내기 완료: 경로 {route_count}건, "
             f"안내 {guidance_count}건 ({route_path.parent})"
         )
-        self.iface.messageBar().pushSuccess("Kakao QGIS Bridge", message)
+        if shapefile_warning:
+            self.iface.messageBar().pushWarning("Kakao QGIS Bridge", message + " " + shapefile_warning)
+        else:
+            self.iface.messageBar().pushSuccess("Kakao QGIS Bridge", message)
 
     def _export_route_history_gpx(self, _checked=False):
         if (
@@ -2275,735 +2107,74 @@ class KakaoQgisBridgePlugin:
 
     @staticmethod
     def _geojson_output_paths(filename):
-        return KakaoQgisBridgePlugin._paired_output_paths(filename, ".geojson")
+        return HistoryExportService._geojson_output_paths(filename)
 
     @staticmethod
     def _paired_output_paths(filename, extension):
-        selected_path = Path(filename)
-        if selected_path.suffix.lower() != extension:
-            selected_path = selected_path.with_suffix(extension)
+        return HistoryExportService._paired_output_paths(filename, extension)
 
-        base_stem = selected_path.stem
-        for paired_suffix in ("_routes", "_guidance"):
-            if base_stem.lower().endswith(paired_suffix):
-                base_stem = base_stem[:-len(paired_suffix)]
-                break
+    def _write_geojson_history_layer(self, source_layer, output_path, layer_name):
+        return self._history_export_service().write_geojson_layer(
+            source_layer, output_path, layer_name,
+        )
 
-        route_path = selected_path.with_name(
-            f"{base_stem}_routes{selected_path.suffix}"
-        )
-        guidance_path = selected_path.with_name(
-            f"{base_stem}_guidance{selected_path.suffix}"
-        )
-        return route_path, guidance_path
-
-    def _write_geojson_history_layer(
-        self,
-        source_layer,
-        output_path,
-        layer_name,
-    ):
-        options = QgsVectorFileWriter.SaveVectorOptions()
-        options.driverName = "GeoJSON"
-        options.fileEncoding = "UTF-8"
-        options.layerName = layer_name
-        options.actionOnExistingFile = (
-            WRITE_OVERWRITE_FILE
-        )
-        options.layerOptions = [
-            "RFC7946=YES",
-            "COORDINATE_PRECISION=8",
-            "WRITE_BBOX=YES",
-            "AUTODETECT_JSON_STRINGS=NO",
-        ]
-
-        result = QgsVectorFileWriter.writeAsVectorFormatV3(
-            source_layer,
-            str(output_path),
-            QgsProject.instance().transformContext(),
-            options,
-        )
-        error_code = result[0] if isinstance(result, tuple) else result
-        error_value = getattr(error_code, "value", error_code)
-        if int(error_value) != 0:
-            error_message = ""
-            if isinstance(result, tuple) and len(result) > 1:
-                error_message = str(result[1] or "")
-            detail = error_message or f"오류 코드 {error_value}"
-            raise RuntimeError(
-                f"{output_path.name} 저장 실패: {detail}"
-            )
-
-        self._save_sidecar_style(
-            output_path,
-            layer_name,
-            source_layer,
-        )
-        return source_layer.featureCount()
+    def _shapefile_loss_warning(self, routes, guides):
+        affected = []
+        for label, layer, specs in (
+            ("경로", routes, self._route_shapefile_fields()),
+            ("안내", guides, self._guidance_shapefile_fields()),
+        ):
+            if layer is None:
+                continue
+            counts = HistoryExportService.shapefile_loss_counts(layer, specs)
+            affected.extend(f"{label} {field} {count}건" for field, count in counts.items())
+        if not affected:
+            return ""
+        message = ("SHP 문자열 제한으로 일부 속성이 잘립니다. "
+                   "경유지 등 전체 속성을 보존하려면 GeoPackage 또는 GeoJSON을 사용하세요.")
+        QgsMessageLog.logMessage(message + "\n" + ", ".join(affected), LOG_TAG, MSG_WARNING)
+        return message
 
     def _write_shapefile_history_layer(
-        self,
-        source_layer,
-        output_path,
-        geometry_name,
-        layer_name,
-        field_specs,
+        self, source_layer, output_path, geometry_name, layer_name, field_specs,
     ):
-        shapefile_layer = self._shapefile_compatible_layer(
-            source_layer,
-            geometry_name,
-            field_specs,
+        return self._history_export_service().write_shapefile_layer(
+            source_layer, output_path, geometry_name, layer_name, field_specs,
         )
-
-        options = QgsVectorFileWriter.SaveVectorOptions()
-        options.driverName = "ESRI Shapefile"
-        options.fileEncoding = "UTF-8"
-        options.layerName = layer_name
-        options.actionOnExistingFile = (
-            WRITE_OVERWRITE_FILE
-        )
-        options.layerOptions = ["ENCODING=UTF-8"]
-
-        result = QgsVectorFileWriter.writeAsVectorFormatV3(
-            shapefile_layer,
-            str(output_path),
-            QgsProject.instance().transformContext(),
-            options,
-        )
-        error_code = result[0] if isinstance(result, tuple) else result
-        error_value = getattr(error_code, "value", error_code)
-        if int(error_value) != 0:
-            error_message = ""
-            if isinstance(result, tuple) and len(result) > 1:
-                error_message = str(result[1] or "")
-            detail = error_message or f"오류 코드 {error_value}"
-            raise RuntimeError(
-                f"{output_path.name} 저장 실패: {detail}"
-            )
-
-        self._save_sidecar_style(
-            output_path,
-            layer_name,
-            source_layer,
-        )
-        return shapefile_layer.featureCount()
 
     def _write_gpx_history(self, route_layer, guidance_layer, output_path):
-        writer = GpxWriter()
-        writer.start(
-            "gpx",
-            {
-                "xmlns": "http://www.topografix.com/GPX/1/1",
-                "xmlns:kakao": "https://yjkim.dev/kakao-qgis-bridge",
-                "version": "1.1",
-                "creator": "Kakao QGIS Bridge",
-            },
-        )
-
-        writer.start("metadata")
-        self._gpx_text(writer, "name", "Kakao QGIS Bridge Route History")
-        self._gpx_text(
-            writer,
-            "time",
-            datetime.now().astimezone().isoformat(timespec="seconds"),
-        )
-        writer.end("metadata")
-
-        route_features = list(route_layer.getFeatures())
-        guidance_by_history = self._guidance_features_by_history(guidance_layer)
-        route_total = 0
-        guidance_total = 0
-
-        for route_feature in route_features:
-            points = self._route_points_from_geometry(route_feature.geometry())
-            if len(points) < 2:
-                continue
-
-            route_total += 1
-            history_id = str(route_feature["history_id"] or "")
-            name = self._gpx_route_name(route_feature)
-            desc = str(route_feature["result_summary"] or "")
-            guides = guidance_by_history.get(history_id, [])
-            guidance_total += len(guides)
-
-            self._append_gpx_waypoints(writer, route_feature, guides)
-            self._append_gpx_track(writer, name, desc, route_feature, points)
-            self._append_gpx_route(writer, name, desc, route_feature, points)
-
-        writer.end("gpx")
-        try:
-            output_path.write_text(writer.document(), encoding="utf-8")
-        except OSError as exc:
-            raise RuntimeError(f"{output_path.name} 저장 실패: {exc}") from exc
-
-        self._save_gpx_sidecar_styles(output_path)
-        return route_total, guidance_total
-
-    def _save_gpx_sidecar_styles(self, output_path):
-        tracks_layer = QgsVectorLayer(
-            "LineString?crs=EPSG:4326&field=name:string(255)&field=type:string(32)",
-            "Kakao GPX Tracks",
-            "memory",
-        )
-        tracks_layer.renderer().setSymbol(self._route_line_symbol())
-        self._save_layer_style_to_path(
-            tracks_layer,
-            output_path.with_name(f"{output_path.stem}_tracks.qml"),
-        )
-
-        routes_layer = QgsVectorLayer(
-            "LineString?crs=EPSG:4326&field=name:string(255)&field=type:string(32)",
-            "Kakao GPX Routes",
-            "memory",
-        )
-        routes_layer.renderer().setSymbol(self._route_line_symbol())
-        self._save_layer_style_to_path(
-            routes_layer,
-            output_path.with_name(f"{output_path.stem}_routes.qml"),
-        )
-
-        waypoints_layer = QgsVectorLayer(
-            "Point?crs=EPSG:4326&field=name:string(255)&field=type:string(64)",
-            "Kakao GPX Waypoints",
-            "memory",
-        )
-        waypoints_layer.setRenderer(self._gpx_waypoint_renderer())
-        self._save_layer_style_to_path(
-            waypoints_layer,
-            output_path.with_name(f"{output_path.stem}_waypoints.qml"),
+        return self._history_export_service().write_gpx(
+            route_layer, guidance_layer, output_path,
         )
 
     def _gpx_waypoint_renderer(self):
-        return QgsCategorizedSymbolRenderer(
-            "type",
-            [
-                QgsRendererCategory(
-                    "origin",
-                    self._route_pin_symbol("route_origin_pin.svg", 7.5),
-                    "출발지",
-                ),
-                QgsRendererCategory(
-                    "destination",
-                    self._route_pin_symbol("route_destination_pin.svg", 7.5),
-                    "도착지",
-                ),
-                QgsRendererCategory(
-                    "waypoint",
-                    self._route_pin_symbol("route_waypoint_pin.svg", 7.5),
-                    "경유지",
-                ),
-                QgsRendererCategory(
-                    "guidance:straight",
-                    self._guidance_symbol("guidance_straight.svg"),
-                    "직진",
-                ),
-                QgsRendererCategory(
-                    "guidance:left",
-                    self._guidance_symbol("guidance_left.svg"),
-                    "좌회전",
-                ),
-                QgsRendererCategory(
-                    "guidance:right",
-                    self._guidance_symbol("guidance_right.svg"),
-                    "우회전",
-                ),
-                QgsRendererCategory(
-                    "guidance:uturn",
-                    self._guidance_symbol("guidance_uturn.svg"),
-                    "유턴",
-                ),
-                QgsRendererCategory(
-                    "guidance:roundabout",
-                    self._guidance_symbol("guidance_roundabout.svg"),
-                    "회전교차로",
-                ),
-                QgsRendererCategory(
-                    "guidance:transition",
-                    self._guidance_symbol("guidance_transition.svg"),
-                    "진출입",
-                ),
-                QgsRendererCategory(
-                    "guidance:other",
-                    self._guidance_symbol("guidance_other.svg"),
-                    "기타 안내",
-                ),
-            ],
-        )
+        return self.style_factory.gpx_waypoint_renderer()
 
-    @staticmethod
-    def _save_layer_style_to_path(layer, style_path):
-        error_message, success = layer.saveNamedStyle(str(style_path))
-        if not success:
-            detail = error_message or "알 수 없는 오류"
-            raise RuntimeError(
-                f"{style_path.name} 스타일 저장 실패: {detail}"
-            )
-
-    @staticmethod
-    def _guidance_features_by_history(guidance_layer):
-        grouped = {}
-        if guidance_layer is None:
-            return grouped
-        for feature in guidance_layer.getFeatures():
-            history_id = str(feature["history_id"] or "")
-            if not history_id:
-                continue
-            grouped.setdefault(history_id, []).append(QgsFeature(feature))
-        for features in grouped.values():
-            features.sort(
-                key=lambda feature: KakaoQgisBridgePlugin._safe_number(
-                    feature["sequence"]
-                )
-            )
-        return grouped
-
-    def _append_gpx_waypoints(self, writer, route_feature, guide_features):
-        history_id = str(route_feature["history_id"] or "")
-        self._append_gpx_wpt(
-            writer,
-            self._safe_float(route_feature["origin_lon"]),
-            self._safe_float(route_feature["origin_lat"]),
-            str(route_feature["origin_name"] or "출발지"),
-            "origin",
-            history_id,
-            "출발지",
-        )
-
-        for index, waypoint in enumerate(
-            self._waypoints_from_history(route_feature),
-            start=1,
-        ):
-            self._append_gpx_wpt(
-                writer,
-                self._safe_float(waypoint.get("lon")),
-                self._safe_float(waypoint.get("lat")),
-                str(waypoint.get("label") or f"경유지 {index}"),
-                "waypoint",
-                history_id,
-                f"경유지 {index}",
-            )
-
-        self._append_gpx_wpt(
-            writer,
-            self._safe_float(route_feature["destination_lon"]),
-            self._safe_float(route_feature["destination_lat"]),
-            str(route_feature["destination_name"] or "도착지"),
-            "destination",
-            history_id,
-            "도착지",
-        )
-
-        for guide in guide_features:
-            sequence = self._safe_number(guide["sequence"])
-            self._append_gpx_wpt(
-                writer,
-                self._safe_float(guide["longitude"]),
-                self._safe_float(guide["latitude"]),
-                f"{sequence}. {guide['guidance']}",
-                f"guidance:{guide['category']}",
-                history_id,
-                str(guide["name"] or "경로 안내"),
-                {
-                    "sequence": sequence,
-                    "guide_type": self._safe_number(guide["guide_type"]),
-                    "distance_m": self._safe_number(guide["distance_m"]),
-                    "duration_s": self._safe_number(guide["duration_s"]),
-                },
-            )
-
-    def _append_gpx_track(self, writer, name, desc, route_feature, points):
-        writer.start("trk")
-        self._gpx_text(writer, "name", name)
-        if desc:
-            self._gpx_text(writer, "desc", desc)
-        self._append_gpx_extensions(writer, route_feature)
-        writer.start("trkseg")
-        for point in points:
-            writer.empty(
-                "trkpt",
-                {
-                    "lat": f"{point.y():.8f}",
-                    "lon": f"{point.x():.8f}",
-                },
-            )
-        writer.end("trkseg")
-        writer.end("trk")
-
-    def _append_gpx_route(self, writer, name, desc, route_feature, points):
-        writer.start("rte")
-        self._gpx_text(writer, "name", name)
-        if desc:
-            self._gpx_text(writer, "desc", desc)
-        self._append_gpx_extensions(writer, route_feature)
-        for point in points:
-            writer.empty(
-                "rtept",
-                {
-                    "lat": f"{point.y():.8f}",
-                    "lon": f"{point.x():.8f}",
-                },
-            )
-        writer.end("rte")
-
-    def _append_gpx_wpt(
-        self,
-        writer,
-        lon,
-        lat,
-        name,
-        point_type,
-        history_id,
-        desc="",
-        extra=None,
-    ):
-        if not math.isfinite(lon) or not math.isfinite(lat):
-            return
-        if not -180.0 <= lon <= 180.0 or not -90.0 <= lat <= 90.0:
-            return
-
-        writer.start(
-            "wpt",
-            {
-                "lat": f"{lat:.8f}",
-                "lon": f"{lon:.8f}",
-            },
-        )
-        self._gpx_text(writer, "name", name)
-        if desc:
-            self._gpx_text(writer, "desc", desc)
-        self._gpx_text(writer, "type", point_type)
-
-        writer.start("extensions")
-        self._gpx_kakao_text(writer, "history_id", history_id)
-        if extra:
-            for key, value in extra.items():
-                self._gpx_kakao_text(writer, key, value)
-        writer.end("extensions")
-        writer.end("wpt")
-
-    def _append_gpx_extensions(self, writer, route_feature):
-        writer.start("extensions")
-        for key in (
-            "history_id",
-            "route_id",
-            "searched_at",
-            "distance_m",
-            "duration_s",
-            "guidance_count",
-            "priority",
-            "avoid",
-            "car_type",
-            "car_fuel",
-            "car_hipass",
-        ):
-            self._gpx_kakao_text(writer, key, route_feature[key])
-        writer.end("extensions")
-
-    @staticmethod
-    def _gpx_text(writer, tag, value):
-        writer.text(tag, value)
-
-    @staticmethod
-    def _gpx_kakao_text(writer, tag, value):
-        writer.text(f"kakao:{tag}", value if value is not None else "")
-
-    @staticmethod
-    def _gpx_route_name(route_feature):
-        origin = str(route_feature["origin_name"] or "출발지")
-        destination = str(route_feature["destination_name"] or "도착지")
-        return f"{origin} → {destination}"
 
     @staticmethod
     def _waypoints_from_history(route_feature):
-        try:
-            waypoints = json.loads(str(route_feature["waypoints_json"] or "[]"))
-        except (TypeError, ValueError, json.JSONDecodeError):
-            return []
-        return waypoints if isinstance(waypoints, list) else []
+        return history_values.waypoints_from_history(route_feature)
 
-    @staticmethod
-    def _shapefile_compatible_layer(
-        source_layer,
-        geometry_name,
-        field_specs,
-    ):
-        field_parts = []
-        for spec in field_specs:
-            field_type = spec["type"]
-            if field_type == "string":
-                field_parts.append(
-                    f"&field={spec['name']}:string({spec['length']})"
-                )
-            elif field_type == "double":
-                field_parts.append(f"&field={spec['name']}:double")
-            else:
-                field_parts.append(f"&field={spec['name']}:integer")
-
-        uri = (
-            f"{geometry_name}?crs={source_layer.crs().authid()}"
-            + "".join(field_parts)
-        )
-        layer = QgsVectorLayer(uri, "Kakao History Shapefile Export", "memory")
-        provider = layer.dataProvider()
-        source_field_names = set(source_layer.fields().names())
-
-        features = []
-        for source_feature in source_layer.getFeatures():
-            feature = QgsFeature(layer.fields())
-            feature.setGeometry(source_feature.geometry())
-            attributes = []
-            for spec in field_specs:
-                source_name = spec["source"]
-                value = (
-                    source_feature[source_name]
-                    if source_name in source_field_names
-                    else None
-                )
-                if value is not None and spec["type"] == "string":
-                    value = str(value)
-                    max_length = spec["length"]
-                    if len(value) > max_length:
-                        value = value[:max_length]
-                attributes.append(value)
-            feature.setAttributes(attributes)
-            features.append(feature)
-
-        if features:
-            provider.addFeatures(features)
-            layer.updateExtents()
-        return layer
 
     @staticmethod
     def _shapefile_sidecar_paths(path):
-        return [
-            path.with_suffix(extension)
-            for extension in (
-                ".shp",
-                ".shx",
-                ".dbf",
-                ".prj",
-                ".cpg",
-                ".qix",
-                ".qml",
-            )
-        ]
+        return HistoryExportService._shapefile_sidecar_paths(path)
 
     @staticmethod
     def _route_shapefile_fields():
-        return [
-            {"name": "schema_v", "source": "schema_ver", "type": "integer"},
-            {"name": "hist_id", "source": "history_id", "type": "string", "length": 36},
-            {"name": "route_id", "source": "route_id", "type": "string", "length": 64},
-            {"name": "searched", "source": "searched_at", "type": "string", "length": 32},
-            {"name": "org_lon", "source": "origin_lon", "type": "double"},
-            {"name": "org_lat", "source": "origin_lat", "type": "double"},
-            {"name": "org_name", "source": "origin_name", "type": "string", "length": 254},
-            {"name": "dst_lon", "source": "destination_lon", "type": "double"},
-            {"name": "dst_lat", "source": "destination_lat", "type": "double"},
-            {"name": "dst_name", "source": "destination_name", "type": "string", "length": 254},
-            {"name": "waypts", "source": "waypoints_json", "type": "string", "length": 254},
-            {"name": "dist_m", "source": "distance_m", "type": "integer"},
-            {"name": "dur_s", "source": "duration_s", "type": "integer"},
-            {"name": "guide_cnt", "source": "guidance_count", "type": "integer"},
-            {"name": "summary", "source": "result_summary", "type": "string", "length": 254},
-            {"name": "priority", "source": "priority", "type": "string", "length": 16},
-            {"name": "avoid", "source": "avoid", "type": "string", "length": 128},
-            {"name": "car_type", "source": "car_type", "type": "integer"},
-            {"name": "car_fuel", "source": "car_fuel", "type": "string", "length": 16},
-            {"name": "car_hipass", "source": "car_hipass", "type": "integer"},
-        ]
+        return HistoryExportService._route_shapefile_fields()
 
     @staticmethod
     def _guidance_shapefile_fields():
-        return [
-            {"name": "schema_v", "source": "schema_ver", "type": "integer"},
-            {"name": "hist_id", "source": "history_id", "type": "string", "length": 36},
-            {"name": "route_id", "source": "route_id", "type": "string", "length": 64},
-            {"name": "searched", "source": "searched_at", "type": "string", "length": 32},
-            {"name": "seq", "source": "sequence", "type": "integer"},
-            {"name": "sect_no", "source": "section_no", "type": "integer"},
-            {"name": "g_type", "source": "guide_type", "type": "integer"},
-            {"name": "category", "source": "category", "type": "string", "length": 16},
-            {"name": "guidance", "source": "guidance", "type": "string", "length": 254},
-            {"name": "name", "source": "name", "type": "string", "length": 128},
-            {"name": "dist_m", "source": "distance_m", "type": "integer"},
-            {"name": "dur_s", "source": "duration_s", "type": "integer"},
-            {"name": "cum_dist", "source": "cum_distance_m", "type": "integer"},
-            {"name": "cum_dur", "source": "cum_duration_s", "type": "integer"},
-            {"name": "road_idx", "source": "road_index", "type": "integer"},
-            {"name": "lon", "source": "longitude", "type": "double"},
-            {"name": "lat", "source": "latitude", "type": "double"},
-        ]
+        return HistoryExportService._guidance_shapefile_fields()
 
-    @staticmethod
-    def _save_sidecar_style(
-        output_path,
-        layer_name,
-        source_layer,
-    ):
-        layer = QgsVectorLayer(str(output_path), layer_name, "ogr")
-        if not layer.isValid():
-            raise RuntimeError(
-                f"{output_path.name}을 열어 QML 스타일을 저장하지 못했습니다."
-            )
-
-        layer.setRenderer(source_layer.renderer().clone())
-        style_path = output_path.with_suffix(".qml")
-        error_message, success = layer.saveNamedStyle(str(style_path))
-        if not success:
-            detail = error_message or "알 수 없는 오류"
-            raise RuntimeError(
-                f"{style_path.name} 스타일 저장 실패: {detail}"
-            )
 
     def _write_history_layer(
-        self,
-        source_layer,
-        output_path,
-        layer_name,
-        geometry_name,
+        self, source_layer, output_path, layer_name, geometry_name,
     ):
-        (
-            layer_exists,
-            existing_ids,
-            existing_fields,
-        ) = self._existing_history_ids(output_path, layer_name)
-        source_fields = {field.name() for field in source_layer.fields()}
-        missing_fields = source_fields - existing_fields
-        pending_layer = self._history_layer_subset(
-            source_layer,
-            existing_ids,
-            geometry_name,
+        return self._history_export_service().write_geopackage_layer(
+            source_layer, output_path, layer_name, geometry_name,
         )
-        pending_count = pending_layer.featureCount()
-        if pending_count == 0 and layer_exists and not missing_fields:
-            self._save_history_layer_style(
-                output_path,
-                layer_name,
-                source_layer,
-            )
-            return 0
-
-        options = QgsVectorFileWriter.SaveVectorOptions()
-        options.driverName = "GPKG"
-        options.fileEncoding = "UTF-8"
-        options.layerName = layer_name
-
-        if layer_exists:
-            options.actionOnExistingFile = (
-                WRITE_APPEND_ADD_FIELDS
-                if missing_fields
-                else WRITE_APPEND_NO_FIELDS
-            )
-        elif output_path.exists():
-            options.actionOnExistingFile = (
-                WRITE_OVERWRITE_LAYER
-            )
-            options.layerOptions = ["SPATIAL_INDEX=YES"]
-        else:
-            options.actionOnExistingFile = (
-                WRITE_OVERWRITE_FILE
-            )
-            options.layerOptions = ["SPATIAL_INDEX=YES"]
-
-        result = QgsVectorFileWriter.writeAsVectorFormatV3(
-            pending_layer,
-            str(output_path),
-            QgsProject.instance().transformContext(),
-            options,
-        )
-        error_code = result[0] if isinstance(result, tuple) else result
-        error_value = getattr(error_code, "value", error_code)
-        if int(error_value) != 0:
-            error_message = ""
-            if isinstance(result, tuple) and len(result) > 1:
-                error_message = str(result[1] or "")
-            detail = error_message or f"오류 코드 {error_value}"
-            raise RuntimeError(f"{layer_name} 레이어 저장 실패: {detail}")
-
-        self._save_history_layer_style(
-            output_path,
-            layer_name,
-            source_layer,
-        )
-
-        return pending_count
-
-    @staticmethod
-    def _save_history_layer_style(output_path, layer_name, source_layer):
-        layer = QgsVectorLayer(
-            f"{output_path}|layername={layer_name}",
-            layer_name,
-            "ogr",
-        )
-        if not layer.isValid():
-            raise RuntimeError(
-                f"{layer_name} 레이어를 열어 기본 스타일을 저장하지 못했습니다."
-            )
-
-        layer.setRenderer(source_layer.renderer().clone())
-        success, error_message = save_style_to_database(
-            layer,
-            "Kakao QGIS Bridge",
-            "Kakao QGIS Bridge route history default style",
-            True,
-        )
-        if not success:
-            detail = error_message or "알 수 없는 오류"
-            raise RuntimeError(
-                f"{layer_name} 기본 스타일 저장 실패: {detail}"
-            )
-
-    @staticmethod
-    def _existing_history_ids(output_path, layer_name):
-        if not output_path.exists():
-            return False, set(), set()
-
-        layer = QgsVectorLayer(
-            f"{output_path}|layername={layer_name}",
-            layer_name,
-            "ogr",
-        )
-        if not layer.isValid():
-            return False, set(), set()
-
-        history_index = layer.fields().indexOf("history_id")
-        if history_index < 0:
-            raise RuntimeError(
-                f"기존 {layer_name} 레이어에 history_id 필드가 없습니다."
-            )
-        history_ids = {
-            str(feature[history_index])
-            for feature in layer.getFeatures()
-            if feature[history_index]
-        }
-        field_names = {field.name() for field in layer.fields()}
-        return True, history_ids, field_names
-
-    @staticmethod
-    def _history_layer_subset(source_layer, existing_ids, geometry_name):
-        subset = QgsVectorLayer(
-            f"{geometry_name}?crs={source_layer.crs().authid()}",
-            "Kakao History Export",
-            "memory",
-        )
-        provider = subset.dataProvider()
-        provider.addAttributes(list(source_layer.fields()))
-        subset.updateFields()
-
-        features = []
-        for source_feature in source_layer.getFeatures():
-            if str(source_feature["history_id"]) in existing_ids:
-                continue
-            feature = QgsFeature(subset.fields())
-            feature.setGeometry(source_feature.geometry())
-            feature.setAttributes(source_feature.attributes())
-            features.append(feature)
-
-        if features:
-            provider.addFeatures(features)
-            subset.updateExtents()
-        return subset
 
     def _create_route_layer(
         self,
@@ -3017,48 +2188,11 @@ class KakaoQgisBridgePlugin:
         avoid_options,
         vehicle_options,
     ):
-        self._remove_route_layer()
-
-        uri = (
-            "LineString?crs=EPSG:4326"
-            "&field=distance_m:integer"
-            "&field=duration_s:integer"
-            "&field=guidance_count:integer"
-            "&field=result_summary:string(255)"
-            "&field=priority:string(16)"
-            "&field=waypoint_count:integer"
-            "&field=avoid:string(128)"
-            "&field=car_type:integer"
-            "&field=car_fuel:string(16)"
-            "&field=car_hipass:integer"
+        layer = self.display_layers.create_route_layer(
+            points, distance, duration, guidance_count, result_summary,
+            priority, waypoint_count, avoid_options, vehicle_options,
         )
-        layer = QgsVectorLayer(uri, "Kakao Mobility Route", "memory")
-        layer.setCustomProperty("skipMemoryLayersCheck", 1)
-        layer.renderer().setSymbol(self._route_line_symbol())
-
-        feature = QgsFeature(layer.fields())
-        feature.setGeometry(QgsGeometry.fromPolylineXY(points))
-        feature.setAttributes(
-            [
-                distance,
-                duration,
-                guidance_count,
-                result_summary,
-                priority,
-                waypoint_count,
-                "|".join(avoid_options),
-                vehicle_options["car_type"],
-                vehicle_options["car_fuel"],
-                1 if vehicle_options["car_hipass"] else 0,
-            ]
-        )
-        layer.dataProvider().addFeature(feature)
-        layer.updateExtents()
-
         project = QgsProject.instance()
-        project.addMapLayer(layer)
-        self.route_layer = layer
-
         canvas = self.iface.mapCanvas()
         try:
             transform = QgsCoordinateTransform(
@@ -3076,158 +2210,21 @@ class KakaoQgisBridgePlugin:
         canvas.refresh()
 
     def _remove_route_layer(self):
-        if self.route_layer is None:
-            return
-
-        project = QgsProject.instance()
-        try:
-            layer_id = self.route_layer.id()
-            if project.mapLayer(layer_id) is not None:
-                project.removeMapLayer(layer_id)
-        except RuntimeError:
-            pass
-        self.route_layer = None
+        return self.display_layers.remove_route_layer()
 
     def _create_route_guidance_layer(self, guides):
-        self._remove_route_guidance_layer()
-        if not guides:
-            return
-
-        uri = (
-            "Point?crs=EPSG:4326"
-            "&field=route_id:string(64)"
-            "&field=sequence:integer"
-            "&field=section_no:integer"
-            "&field=guide_type:integer"
-            "&field=category:string(16)"
-            "&field=guidance:string(255)"
-            "&field=name:string(128)"
-            "&field=distance_m:integer"
-            "&field=duration_s:integer"
-            "&field=cum_distance_m:integer"
-            "&field=cum_duration_s:integer"
-            "&field=road_index:integer"
-            "&field=longitude:double"
-            "&field=latitude:double"
-        )
-        layer = QgsVectorLayer(uri, "Kakao Route Guidance", "memory")
-        layer.setCustomProperty("skipMemoryLayersCheck", 1)
-        layer.setRenderer(self._route_guidance_renderer())
-
-        provider = layer.dataProvider()
-        feature_ids = {}
-        for guide in guides:
-            feature = QgsFeature(layer.fields())
-            feature.setGeometry(
-                QgsGeometry.fromPointXY(
-                    QgsPointXY(guide["longitude"], guide["latitude"])
-                )
-            )
-            feature.setAttributes(
-                [
-                    guide["route_id"],
-                    guide["sequence"],
-                    guide["section_no"],
-                    guide["guide_type"],
-                    guide["category"],
-                    guide["guidance"],
-                    guide["name"],
-                    guide["distance_m"],
-                    guide["duration_s"],
-                    guide["cumulative_distance_m"],
-                    guide["cumulative_duration_s"],
-                    guide["road_index"],
-                    guide["longitude"],
-                    guide["latitude"],
-                ]
-            )
-            if provider.addFeature(feature):
-                feature_ids[guide["sequence"]] = feature.id()
-
-        layer.updateExtents()
-        QgsProject.instance().addMapLayer(layer)
-        self.route_guidance_layer = layer
-        self.route_guidance_feature_ids = feature_ids
+        return self.display_layers.create_route_guidance_layer(guides)
 
     @staticmethod
     def _route_line_symbol():
-        return QgsLineSymbol.createSimple(
-            {
-                "line_color": "#1976d2",
-                "line_width": "1.4",
-            }
-        )
+        return StyleFactory.route_line_symbol()
 
     def _route_guidance_renderer(self):
-        return QgsCategorizedSymbolRenderer(
-            "category",
-            [
-                QgsRendererCategory(
-                    "start",
-                    self._route_pin_symbol("route_origin_pin.svg", 7.5),
-                    "출발",
-                ),
-                QgsRendererCategory(
-                    "destination",
-                    self._route_pin_symbol(
-                        "route_destination_pin.svg",
-                        7.5,
-                    ),
-                    "도착",
-                ),
-                QgsRendererCategory(
-                    "waypoint",
-                    self._route_pin_symbol("route_waypoint_pin.svg", 7.5),
-                    "경유지",
-                ),
-                QgsRendererCategory(
-                    "straight",
-                    self._guidance_symbol("guidance_straight.svg"),
-                    "직진",
-                ),
-                QgsRendererCategory(
-                    "left",
-                    self._guidance_symbol("guidance_left.svg"),
-                    "좌회전",
-                ),
-                QgsRendererCategory(
-                    "right",
-                    self._guidance_symbol("guidance_right.svg"),
-                    "우회전",
-                ),
-                QgsRendererCategory(
-                    "uturn",
-                    self._guidance_symbol("guidance_uturn.svg"),
-                    "유턴",
-                ),
-                QgsRendererCategory(
-                    "roundabout",
-                    self._guidance_symbol("guidance_roundabout.svg"),
-                    "회전교차로",
-                ),
-                QgsRendererCategory(
-                    "transition",
-                    self._guidance_symbol("guidance_transition.svg"),
-                    "진출입",
-                ),
-                QgsRendererCategory(
-                    "other",
-                    self._guidance_symbol("guidance_other.svg"),
-                    "기타 안내",
-                ),
-            ],
-        )
+        return self.style_factory.route_guidance_renderer()
 
     @staticmethod
     def _guidance_symbol(filename):
-        return QgsMarkerSymbol(
-            [
-                QgsSvgMarkerSymbolLayer(
-                    KakaoQgisBridgePlugin._embedded_svg_path(filename),
-                    6.5,
-                )
-            ]
-        )
+        return StyleFactory.guidance_symbol(filename)
 
     def _focus_route_guidance(self, sequence, lon, lat):
         if not math.isfinite(lon) or not math.isfinite(lat):
@@ -3235,32 +2232,11 @@ class KakaoQgisBridgePlugin:
         if not -180.0 <= lon <= 180.0 or not -90.0 <= lat <= 90.0:
             return
 
-        if self.route_guidance_layer is not None:
-            try:
-                feature_id = self.route_guidance_feature_ids.get(sequence)
-                self.route_guidance_layer.removeSelection()
-                if feature_id is not None:
-                    self.route_guidance_layer.selectByIds([feature_id])
-            except RuntimeError:
-                self.route_guidance_layer = None
-                self.route_guidance_feature_ids = {}
-
+        self.display_layers.select_guidance(sequence)
         self._handle_viewer_moved(lon, lat)
 
     def _remove_route_guidance_layer(self):
-        if self.route_guidance_layer is None:
-            self.route_guidance_feature_ids = {}
-            return
-
-        project = QgsProject.instance()
-        try:
-            layer_id = self.route_guidance_layer.id()
-            if project.mapLayer(layer_id) is not None:
-                project.removeMapLayer(layer_id)
-        except RuntimeError:
-            pass
-        self.route_guidance_layer = None
-        self.route_guidance_feature_ids = {}
+        return self.display_layers.remove_route_guidance_layer()
 
     def _clear_current_route_display(self):
         self.active_route_history_id = None
@@ -3273,173 +2249,49 @@ class KakaoQgisBridgePlugin:
             "path": [],
             "guides": [],
         }
+        self._set_route_guidance(payload)
+
+    def _set_route_point(self, point_id, lon, lat):
+        return self.display_layers.set_route_point(point_id, lon, lat)
+
+    def _ensure_route_points_layer(self):
+        return self.display_layers.ensure_route_points_layer()
+
+    def _sync_route_point_legend(self):
+        return self.display_layers.sync_route_point_legend()
+
+    @staticmethod
+    def _route_pin_symbol(filename, size=9.0):
+        return StyleFactory.route_pin_symbol(filename, size)
+
+    @staticmethod
+    def _embedded_svg_path(filename):
+        return StyleFactory.embedded_svg_path(filename)
+
+    @staticmethod
+    def _route_point_role(point_id):
+        return DisplayLayerManager.route_point_role(point_id)
+
+    def _clear_route_point(self, point_id):
+        return self.display_layers.clear_route_point(point_id)
+
+    def _clear_route_points(self):
+        return self.display_layers.clear_route_points()
+
+    def _remove_route_points_layer(self):
+        return self.display_layers.remove_route_points_layer()
+
+    def _set_route_guidance(self, payload):
+        self._current_guidance_payload = payload
         if self.dock is not None:
             self.dock.set_route_guidance(payload)
         if self.external_bridge_server is not None:
             self.external_bridge_server.emit_signal(
-                "routeGuidanceChanged",
-                json.dumps(payload, ensure_ascii=False),
+                "routeGuidanceChanged", json.dumps(payload, ensure_ascii=False)
             )
-
-    def _set_route_point(self, point_id, lon, lat):
-        role = self._route_point_role(point_id)
-        if role is None:
-            return
-        if not math.isfinite(lon) or not math.isfinite(lat):
-            return
-        if not -180.0 <= lon <= 180.0 or not -90.0 <= lat <= 90.0:
-            return
-
-        layer = self._ensure_route_points_layer()
-        provider = layer.dataProvider()
-        geometry = QgsGeometry.fromPointXY(QgsPointXY(lon, lat))
-        attributes = [point_id, role, lon, lat]
-        feature_id = self.route_point_feature_ids.get(point_id)
-        feature_valid = (
-            feature_id is not None and layer.getFeature(feature_id).isValid()
-        )
-
-        if feature_valid:
-            provider.changeGeometryValues({feature_id: geometry})
-            provider.changeAttributeValues(
-                {
-                    feature_id: {
-                        index: value
-                        for index, value in enumerate(attributes)
-                    }
-                }
-            )
-        else:
-            feature = QgsFeature(layer.fields())
-            feature.setGeometry(geometry)
-            feature.setAttributes(attributes)
-            if provider.addFeature(feature):
-                self.route_point_feature_ids[point_id] = feature.id()
-
-        layer.updateExtents()
-        layer.triggerRepaint()
-
-    def _ensure_route_points_layer(self):
-        project = QgsProject.instance()
-        if self.route_points_layer is not None:
-            try:
-                if project.mapLayer(self.route_points_layer.id()) is not None:
-                    return self.route_points_layer
-            except RuntimeError:
-                pass
-
-        uri = (
-            "Point?crs=EPSG:4326"
-            "&field=point_id:string(32)"
-            "&field=role:string(16)"
-            "&field=longitude:double"
-            "&field=latitude:double"
-        )
-        layer = QgsVectorLayer(uri, "Kakao Route Points", "memory")
-        layer.setCustomProperty("skipMemoryLayersCheck", 1)
-
-        origin_symbol = self._route_pin_symbol("route_origin_pin.svg")
-        destination_symbol = self._route_pin_symbol(
-            "route_destination_pin.svg"
-        )
-        waypoint_symbol = self._route_pin_symbol("route_waypoint_pin.svg")
-        renderer = QgsCategorizedSymbolRenderer(
-            "role",
-            [
-                QgsRendererCategory("origin", origin_symbol, "출발지"),
-                QgsRendererCategory(
-                    "destination",
-                    destination_symbol,
-                    "도착지",
-                ),
-                QgsRendererCategory(
-                    "waypoint",
-                    waypoint_symbol,
-                    "경유지",
-                ),
-            ],
-        )
-        layer.setRenderer(renderer)
-
-        project.addMapLayer(layer)
-        self.route_points_layer = layer
-        self.route_point_feature_ids = {}
-        return layer
-
-    @staticmethod
-    def _route_pin_symbol(filename, size=9.0):
-        symbol_layer = QgsSvgMarkerSymbolLayer(
-            KakaoQgisBridgePlugin._embedded_svg_path(filename),
-            size,
-        )
-        vertical_anchor = getattr(Qgis, "VerticalAnchorPoint", None)
-        bottom_anchor = getattr(vertical_anchor, "Bottom", None)
-        if bottom_anchor is None:
-            bottom_anchor = getattr(symbol_layer, "Bottom", None)
-        if bottom_anchor is not None:
-            symbol_layer.setVerticalAnchorPoint(bottom_anchor)
-        return QgsMarkerSymbol([symbol_layer])
-
-    @staticmethod
-    @lru_cache(maxsize=None)
-    def _embedded_svg_path(filename):
-        svg_path = PLUGIN_DIR / "web" / filename
-        encoded = b64encode(svg_path.read_bytes()).decode("ascii")
-        return f"base64:{encoded}"
-
-    @staticmethod
-    def _route_point_role(point_id):
-        if point_id in ("origin", "destination"):
-            return point_id
-        if point_id.startswith("waypoint:"):
-            return "waypoint"
-        return None
-
-    def _clear_route_point(self, point_id):
-        if self._route_point_role(point_id) is None:
-            return
-
-        feature_id = self.route_point_feature_ids.pop(point_id, None)
-        if feature_id is None or self.route_points_layer is None:
-            return
-
-        try:
-            self.route_points_layer.dataProvider().deleteFeatures([feature_id])
-            self.route_points_layer.updateExtents()
-            self.route_points_layer.triggerRepaint()
-        except RuntimeError:
-            self.route_points_layer = None
-            self.route_point_feature_ids = {}
-
-    def _clear_route_points(self):
-        feature_ids = list(self.route_point_feature_ids.values())
-        self.route_point_feature_ids = {}
-        if not feature_ids or self.route_points_layer is None:
-            return
-
-        try:
-            self.route_points_layer.dataProvider().deleteFeatures(feature_ids)
-            self.route_points_layer.updateExtents()
-            self.route_points_layer.triggerRepaint()
-        except RuntimeError:
-            self.route_points_layer = None
-
-    def _remove_route_points_layer(self):
-        if self.route_points_layer is None:
-            self.route_point_feature_ids = {}
-            return
-
-        project = QgsProject.instance()
-        try:
-            layer_id = self.route_points_layer.id()
-            if project.mapLayer(layer_id) is not None:
-                project.removeMapLayer(layer_id)
-        except RuntimeError:
-            pass
-        self.route_points_layer = None
-        self.route_point_feature_ids = {}
 
     def _set_route_status(self, success, message):
+        self._last_route_status = (bool(success), str(message))
         if self.dock is not None:
             self.dock.set_route_status(success, message)
         if self.external_bridge_server is not None:

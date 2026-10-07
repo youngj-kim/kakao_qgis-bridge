@@ -82,6 +82,8 @@ kakao_qgis_bridge/
   mobility.py
   mobility_client.py
   sync_controller.py
+  style_factory.py
+  display_layers.py
   history_repository.py
   history_export.py
   settings.py
@@ -124,9 +126,19 @@ QGIS 3 외부 브라우저 연동 모드에서 사용하는 로컬 HTTP 브리�
 
 QGIS 캔버스와 Kakao Viewer 사이의 양방향 위치 동기화, 좌표계 변환, 역방향 동기화 가드를 담당합니다.
 
-`kakao_qgis_bridge/history_repository.py`, `history_export.py`
+`kakao_qgis_bridge/style_factory.py`
 
-경로·안내 이력 메모리 레이어와 GPX XML 작성을 플러그인 진입점에서 분리해 관리합니다.
+경로 선, 안내·GPX·핀 분류 renderer와 로드뷰 radar 심볼을 생성합니다. 각 호출은 새로운 QGIS 객체를 반환하며 SVG 인코딩 문자열만 캐시합니다. 저장소와 내보내기 서비스도 이 팩토리를 공유합니다. UI·프로젝트·레이어 수명과 데이터 변경은 담당하지 않습니다.
+
+`kakao_qgis_bridge/display_layers.py`
+
+현재 경로·안내·출발/도착/경유지 핀·로드뷰 표시 레이어를 생성·갱신·제거하고 feature ID와 범례 category 캐시를 관리합니다. 프로젝트와 스타일 팩토리를 주입받으며 지도 이동·뷰어 상태·이력 저장소와 UI는 직접 처리하지 않습니다. 종료할 때 자신이 보관한 표시 레이어만 제거합니다.
+
+`kakao_qgis_bridge/history_repository.py`, `history_operations.py`, `history_import_service.py`, `history_export_service.py`, `history_formats.py`, `history_export.py`, `history_values.py`
+
+경로·안내 이력의 메모리 레이어와 조회·데이터 삭제는 저장소가 관리합니다. 이력 파일 읽기·필드 복원은 가져오기 서비스가, GeoPackage/GeoJSON/Shapefile/GPX 파일 작성과 출력 스타일 저장은 내보내기 서비스가 담당합니다. `history_formats.py`는 공통 파일명·필드 이름 대응, `history_export.py`는 GPX XML 작성기, `history_values.py`는 내보내기와 뷰어 복원이 공유하는 값 변환 함수입니다. 대화상자·이력 선택·활성 경로와 뷰어 갱신·결과 안내는 플러그인이 담당합니다.
+
+`history_operations.py`는 이력 변경 전 편집 가능 여부, 실제 반영 건수와 실패 후 보상 복구를 확인합니다. 복구되지 않은 부분 변경은 오류로 안내하고 추가 이력 변경을 차단하며, 보관용 내보내기는 유지합니다. 이는 두 레이어에 대한 DB 트랜잭션이 아닙니다.
 
 `kakao_qgis_bridge/web/kakao_viewer.html`
 
@@ -245,15 +257,18 @@ QgsApplication.qgisSettingsDirPath()
 
 QGIS 4에서는 Dock 내부의 Kakao Map/Roadview 창을 기본 모드로 사용합니다.
 
-QGIS 3에서는 외부 브라우저 연동 모드로 사용할 수 있습니다. 플러그인이 `http://localhost:8081/`에 작은 로컬 브리지 서버를 띄우고, `외부 연동 창 열기` 버튼으로 기본 브라우저의 Kakao Viewer를 엽니다.
+QGIS 3에서는 외부 브라우저 연동 모드로 사용할 수 있습니다. 플러그인이 기본 포트 8081에 로컬 브리지 서버를 띄우고, 이미 사용 중이면 8082로 연결합니다. `외부 연동 창 열기` 버튼은 실제 연결된 포트의 Kakao Viewer를 기본 브라우저에서 엽니다. QGIS 3·4의 외부 연동을 동시에 사용할 수 있으며, 먼저 실행한 서버가 8081을 사용합니다. 두 포트가 모두 사용 중이면 안내를 표시합니다.
 
 외부 브라우저 연동 모드에서도 QGIS 캔버스 중심 좌표는 EPSG:4326으로 변환되어 브라우저 Kakao Map/Roadview로 전달됩니다. 브라우저의 Kakao 지도나 Roadview 위치 이동도 localhost API를 통해 QGIS 캔버스와 Roadview 위치 레이어로 다시 전달됩니다. 단, Dock 내부 렌더링은 사용하지 않으므로 브라우저 창은 QGIS와 별도로 관리됩니다.
 
-Kakao Developers의 JavaScript SDK 허용 도메인에는 아래 값을 등록해야 합니다.
+Kakao Developers의 `[플랫폼 키] > [JavaScript 키] > [JavaScript SDK 도메인]`에 아래 두 값을 등록해야 합니다. 기존 키를 그대로 사용할 수 있습니다. `제품 링크 관리 > 웹 도메인` 등록과는 별도 설정입니다.
 
 ```text
 http://localhost:8081
+http://localhost:8082
 ```
+
+외부 브리지 포트는 자동 선택되며, `KAKAO_MAP_BASE_URL`은 내장 뷰어의 기준 URL 설정입니다. 새 패키지 설치 후 두 QGIS를 다시 시작하고 기존 외부 탭을 닫은 뒤 플러그인 버튼으로 새 창을 여세요.
 
 ## 실행 방법
 
@@ -475,6 +490,8 @@ http://localhost:8081
 - 이력 검색·필터와 여러 이력 비교
 
 ## 참고 문서
+
+이력 불러오기는 WGS84 좌표계, 선/점 geometry, 스키마와 필수 값, 경로·안내 연결 및 기존 이력과의 충돌을 파일 전체에서 검사한 뒤 적용한다. 오류가 있으면 이번 데이터를 추가하지 않는다. 같은 내용의 중복은 건너뛰고 건수를 알려 준다. 레거시 선택 필드 복원과 SHP 경유지 JSON 손실은 경고와 로그로 알린다. 자세한 정책과 검증 범위는 `docs/history-import-validation-review.md`, `docs/export-validation.md`를 참고한다.
 
 - QGIS Python Plugin 구조: https://docs.qgis.org/testing/en/docs/pyqgis_developer_cookbook/plugins/plugins.html
 - Kakao Maps JavaScript API: https://apis.map.kakao.com/web/documentation/

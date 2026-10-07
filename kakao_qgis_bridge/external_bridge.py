@@ -1,9 +1,12 @@
 import json
 import hmac
+import copy
+import errno
 import secrets
+import socket
 import threading
+from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from queue import Empty, Queue
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 from .settings import PLUGIN_DIR, kakao_javascript_key
@@ -14,6 +17,9 @@ EXTERNAL_BRIDGE_SCRIPT = r"""
 (() => {
   document.documentElement.classList.add("external-browser");
   const bridgeToken = __KAKAO_BRIDGE_TOKEN_JSON__;
+  const clientId = window.crypto && typeof window.crypto.randomUUID === "function"
+    ? window.crypto.randomUUID()
+    : `viewer-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
   const handlers = {
     routeStatusChanged: [],
@@ -22,7 +28,10 @@ EXTERNAL_BRIDGE_SCRIPT = r"""
     loadRouteHistoryInput: []
   };
   let lastCenterSequence = -1;
-  let lastEventSequence = 0;
+  let lastEventSequence = null;
+  let running = false;
+  let pollTimer = null;
+  let retryDelay = 400;
 
   function signal(name) {
     return {
@@ -34,66 +43,119 @@ EXTERNAL_BRIDGE_SCRIPT = r"""
     };
   }
 
+  async function request(path, options = {}) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    try {
+      const response = await fetch(path, {
+        ...options,
+        signal: controller.signal,
+        cache: "no-store",
+        headers: {
+          ...options.headers,
+          "X-Kakao-Bridge-Token": bridgeToken,
+          "X-Kakao-Bridge-Client": clientId
+        }
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      return await response.json();
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   async function post(path, payload) {
     try {
-      await fetch(path, {
+      await request(path, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Kakao-Bridge-Token": bridgeToken
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload || {})
       });
     } catch (error) {
+      const message = `QGIS 연결 요청에 실패했습니다 (${error.message}). 연결 상태를 확인한 뒤 다시 시도하세요.`;
+      if (path === "/api/request-route") {
+        dispatch("routeStatusChanged", [false, message]);
+      } else if (typeof window.setKakaoBridgeStatus === "function") {
+        window.setKakaoBridgeStatus(message);
+      }
       console.warn("Kakao QGIS external bridge request failed", path, error);
     }
   }
 
-  async function pollState() {
-    try {
-      const response = await fetch("/api/state", {
-        cache: "no-store",
-        headers: { "X-Kakao-Bridge-Token": bridgeToken }
-      });
-      if (!response.ok) {
-        return;
-      }
-      const state = await response.json();
-      if (
-        state.center &&
-        state.center.sequence !== lastCenterSequence &&
-        typeof window.centerKakaoMap === "function"
-      ) {
-        lastCenterSequence = state.center.sequence;
-        window.centerKakaoMap(state.center.lon, state.center.lat);
-      }
-    } catch (error) {
-      console.warn("Kakao QGIS external bridge state polling failed", error);
+  function dispatch(name, args) {
+    for (const callback of handlers[name] || []) {
+      callback(...args);
     }
   }
 
-  async function pollEvents() {
-    try {
-      const response = await fetch(`/api/events?since=${lastEventSequence}`, {
-        cache: "no-store",
-        headers: { "X-Kakao-Bridge-Token": bridgeToken }
-      });
-      if (!response.ok) {
-        return;
+  function applyCenter(center, force = false) {
+    if (!center || (!force && center.sequence === lastCenterSequence)) {
+      return;
+    }
+    // This tab already applied its own drag. Other tabs must follow it.
+    if ((force || center.source !== clientId) && typeof window.centerKakaoMap === "function") {
+      window.centerKakaoMap(center.lon, center.lat);
+    }
+    lastCenterSequence = center.sequence;
+  }
+
+  function applySnapshot(state) {
+    for (const name of ["routeGuidanceChanged", "routeHistoryChanged", "routeStatusChanged"]) {
+      const event = (state.signals || {})[name];
+      if (event) {
+        dispatch(name, event.args || []);
       }
-      const payload = await response.json();
-      for (const event of payload.events || []) {
-        lastEventSequence = Math.max(lastEventSequence, event.sequence || 0);
-        for (const callback of handlers[event.signal] || []) {
-          callback(...(event.args || []));
+    }
+    // Route rendering may fit bounds; apply the authoritative center last.
+    applyCenter(state.center, true);
+    lastEventSequence = state.sequence;
+  }
+
+  async function poll() {
+    if (!running) {
+      return;
+    }
+    try {
+      if (lastEventSequence === null) {
+        applySnapshot(await request("/api/state"));
+      } else {
+        const payload = await request(`/api/events?since=${lastEventSequence}`);
+        if (payload.resync_required) {
+          applySnapshot(payload.snapshot);
+        } else {
+          for (const event of payload.events || []) {
+            if (event.sequence <= lastEventSequence) {
+              continue;
+            }
+            if (event.signal === "centerChanged") {
+              applyCenter(event.center);
+            } else {
+              dispatch(event.signal, event.args || []);
+            }
+            lastEventSequence = event.sequence;
+          }
         }
       }
+      retryDelay = 400;
     } catch (error) {
+      retryDelay = Math.min(retryDelay * 2, 5000);
       console.warn("Kakao QGIS external bridge event polling failed", error);
+    } finally {
+      if (running) {
+        pollTimer = setTimeout(poll, retryDelay);
+      }
     }
   }
 
   window.kakaoExternalBridge = {
+    start() {
+      if (!running) {
+        running = true;
+        pollTimer = setTimeout(poll, 0);
+      }
+    },
     routeStatusChanged: signal("routeStatusChanged"),
     routeGuidanceChanged: signal("routeGuidanceChanged"),
     routeHistoryChanged: signal("routeHistoryChanged"),
@@ -189,16 +251,19 @@ EXTERNAL_BRIDGE_SCRIPT = r"""
     }
   };
 
-  setInterval(pollState, 400);
-  setInterval(pollEvents, 400);
-  pollState();
-  pollEvents();
 })();
 </script>
 """
 
 
 MAX_REQUEST_BODY_BYTES = 64 * 1024
+MAX_OUTBOUND_EVENTS = 100
+MAX_OUTBOUND_EVENT_BYTES = 4 * 1024 * 1024
+MAX_PENDING_EVENTS = 256
+MAX_PENDING_EVENT_BYTES = 1024 * 1024
+STATE_SIGNALS = {"routeStatusChanged", "routeGuidanceChanged", "routeHistoryChanged"}
+TRANSIENT_SIGNALS = {"loadRouteHistoryInput"}
+COALESCED_EVENTS = {"move_center", "roadview_state"}
 EXTERNAL_EVENT_PATHS = {
     "/api/move-center": "move_center",
     "/api/roadview-state": "roadview_state",
@@ -218,28 +283,50 @@ EXTERNAL_EVENT_PATHS = {
 }
 
 
+class ExclusiveBridgeHTTPServer(ThreadingHTTPServer):
+    # Windows SO_REUSEADDR permits duplicate binds and can route a tab to the
+    # wrong QGIS session. Preserve ordinary restart behavior on other platforms.
+    allow_reuse_address = not hasattr(socket, "SO_EXCLUSIVEADDRUSE")
+
+    def server_bind(self):
+        if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
 class KakaoExternalBridgeServer:
-    def __init__(self, host="127.0.0.1", port=8081):
+    def __init__(self, host="127.0.0.1", port=8081, fallback_ports=()):
         self.host = host
         self.port = port
+        self._candidate_ports = tuple(dict.fromkeys((port, *fallback_ports)))
         self._server = None
         self._thread = None
         self._token = secrets.token_urlsafe(32)
         self._viewer_document = ""
         self._state_lock = threading.Lock()
-        self._events = Queue()
-        self._outbound_events = []
+        self._events = deque()
+        self._event_lock = threading.Lock()
+        self._pending_bytes = 0
+        self._outbound_events = deque()
+        self._outbound_bytes = 0
+        self._event_floor = 1
+        self._signals = {}
         self._outbound_sequence = 0
         self._center = None
-        self._center_sequence = 0
+
+    @property
+    def origin(self):
+        if self._server is None:
+            return ""
+        _host, port = self._server.server_address
+        return f"http://localhost:{port}"
 
     @property
     def url(self):
         if self._server is None:
             return ""
-        _host, port = self._server.server_address
         query = urlencode({"token": self._token})
-        return f"http://localhost:{port}/?{query}"
+        return f"{self.origin}/?{query}"
 
     def start(self):
         if self._server is not None:
@@ -249,7 +336,18 @@ class KakaoExternalBridgeServer:
         # backed objects must not be accessed by HTTP worker threads.
         self._viewer_document = self._viewer_html()
         handler = self._make_handler()
-        self._server = ThreadingHTTPServer((self.host, self.port), handler)
+        for index, port in enumerate(self._candidate_ports):
+            try:
+                server = ExclusiveBridgeHTTPServer((self.host, port), handler)
+            except OSError as exc:
+                # An exclusive Windows bind can report WSAEACCES for an
+                # occupied/reserved port. Do not hide unrelated I/O failures.
+                occupied = exc.errno == errno.EADDRINUSE or getattr(exc, "winerror", None) in (10048, 10013)
+                if not occupied or index == len(self._candidate_ports) - 1:
+                    raise
+            else:
+                self._server = server
+                break
         self._server.daemon_threads = True
         self._thread = threading.Thread(
             target=self._server.serve_forever,
@@ -273,35 +371,103 @@ class KakaoExternalBridgeServer:
         self._thread = None
         self._viewer_document = ""
 
-    def set_center(self, lon, lat):
+    def set_center(self, lon, lat, source=None):
         with self._state_lock:
-            self._center_sequence += 1
+            self._outbound_sequence += 1
             self._center = {
                 "lon": float(lon),
                 "lat": float(lat),
-                "sequence": self._center_sequence,
+                "sequence": self._outbound_sequence,
+                "source": source,
             }
+            self._retain_event({
+                "sequence": self._outbound_sequence,
+                "signal": "centerChanged",
+                "center": dict(self._center),
+            })
 
     def drain_events(self):
-        events = []
-        while True:
-            try:
-                events.append(self._events.get_nowait())
-            except Empty:
-                return events
+        with self._event_lock:
+            events = [event for event, _size in self._events]
+            self._events.clear()
+            self._pending_bytes = 0
+            return events
+
+    def queue_event(self, event):
+        event = copy.deepcopy(event)
+        size = len(json.dumps(event, ensure_ascii=False).encode("utf-8"))
+        with self._event_lock:
+            replaced_index = None
+            replaced_size = 0
+            # Coalesce motion updates only after the last command barrier.
+            if event["type"] in COALESCED_EVENTS:
+                for index in range(len(self._events) - 1, -1, -1):
+                    previous, previous_size = self._events[index]
+                    if previous["type"] not in COALESCED_EVENTS:
+                        break
+                    if previous["type"] == event["type"] and previous.get("source") == event.get("source"):
+                        replaced_index = index
+                        replaced_size = previous_size
+                        break
+            pending_count = len(self._events) + (1 if replaced_index is None else 0)
+            pending_bytes = self._pending_bytes - replaced_size + size
+            if pending_count > MAX_PENDING_EVENTS or pending_bytes > MAX_PENDING_EVENT_BYTES:
+                return False
+            if replaced_index is not None:
+                del self._events[replaced_index]
+            self._events.append((event, size))
+            self._pending_bytes = pending_bytes
+            return True
 
     def emit_signal(self, name, *args):
+        if name not in STATE_SIGNALS | TRANSIENT_SIGNALS:
+            raise ValueError(f"Unsupported bridge signal: {name}")
         with self._state_lock:
             self._outbound_sequence += 1
-            self._outbound_events.append(
-                {
-                    "sequence": self._outbound_sequence,
-                    "signal": name,
-                    "args": list(args),
-                }
-            )
-            if len(self._outbound_events) > 100:
-                self._outbound_events = self._outbound_events[-100:]
+            event = {
+                "sequence": self._outbound_sequence,
+                "signal": name,
+                "args": copy.deepcopy(list(args)),
+            }
+            if name in STATE_SIGNALS:
+                self._signals[name] = event
+            self._retain_event(event)
+
+    def _retain_event(self, event):
+        """Called under _state_lock; an oversized event is restored by snapshot."""
+        size = len(json.dumps(event, ensure_ascii=False).encode("utf-8"))
+        self._outbound_events.append((event, size))
+        self._outbound_bytes += size
+        while len(self._outbound_events) > MAX_OUTBOUND_EVENTS or self._outbound_bytes > MAX_OUTBOUND_EVENT_BYTES:
+            removed, removed_size = self._outbound_events.popleft()
+            self._outbound_bytes -= removed_size
+            self._event_floor = removed["sequence"] + 1
+
+    def _snapshot_locked(self):
+        return copy.deepcopy({
+            "sequence": self._outbound_sequence,
+            "center": self._center,
+            "signals": self._signals,
+        })
+
+    def snapshot(self):
+        with self._state_lock:
+            return self._snapshot_locked()
+
+    def events_since(self, since):
+        with self._state_lock:
+            resync = since < self._event_floor - 1 or since > self._outbound_sequence
+            result = {
+                "sequence": self._outbound_sequence,
+                "resync_required": resync,
+                "events": [] if resync else copy.deepcopy([
+                    event for event, _size in self._outbound_events
+                    if event["sequence"] > since
+                ]),
+            }
+            if resync:
+                result["snapshot"] = self._snapshot_locked()
+            return result
 
     def _viewer_html(self):
         html = (PLUGIN_DIR / "web" / "kakao_viewer.html").read_text(
@@ -338,25 +504,18 @@ class KakaoExternalBridgeServer:
                 if not self._authorized():
                     return
                 if parsed.path == "/api/state":
-                    with bridge._state_lock:
-                        center = dict(bridge._center) if bridge._center else None
-                    self._send_json({"center": center})
+                    self._send_json(bridge.snapshot())
                     return
                 if parsed.path == "/api/events":
-                    since = 0
                     try:
                         since = int(parse_qs(parsed.query).get("since", ["0"])[0])
                     except ValueError:
-                        since = 0
-                    with bridge._state_lock:
-                        events = [
-                            dict(event)
-                            for event in bridge._outbound_events
-                            if event["sequence"] > since
-                        ]
-                    self._send_json(
-                        {"events": events}
-                    )
+                        self.send_error(400, "invalid event cursor")
+                        return
+                    if since < 0:
+                        self.send_error(400, "invalid event cursor")
+                        return
+                    self._send_json(bridge.events_since(since))
                     return
 
                 self.send_error(404)
@@ -391,7 +550,16 @@ class KakaoExternalBridgeServer:
                     self.send_error(400, "JSON object required")
                     return
 
-                bridge._events.put({"type": event_type, "payload": payload})
+                event = {"type": event_type, "payload": payload}
+                source = self.headers.get("X-Kakao-Bridge-Client", "")
+                if source:
+                    if len(source) > 64 or any(not (char.isascii() and (char.isalnum() or char in "-_")) for char in source):
+                        self.send_error(400, "invalid client identifier")
+                        return
+                    event["source"] = source
+                if not bridge.queue_event(event):
+                    self.send_error(503, "bridge event queue is full")
+                    return
                 self._send_json({"ok": True})
 
             def _authorized(self, token=None):
@@ -415,7 +583,12 @@ class KakaoExternalBridgeServer:
                     if token is not None
                     else self.headers.get("X-Kakao-Bridge-Token", "")
                 )
-                if not hmac.compare_digest(supplied_token, bridge._token):
+                try:
+                    supplied_token = supplied_token.encode("ascii")
+                except UnicodeEncodeError:
+                    self.send_error(403)
+                    return False
+                if not hmac.compare_digest(supplied_token, bridge._token.encode("ascii")):
                     self.send_error(403)
                     return False
                 return True

@@ -73,7 +73,7 @@ plugin repository.
   operates normally in the user's desktop session.
 - [x] Restart QGIS 3.44 with the installed test build and confirm the external
   browser integration operates normally in the user's desktop session.
-- [ ] Run the automated checks in CI on every pull request and release tag.
+- [x] Run the automated checks in CI on every pull request and release tag.
 
 ## Package
 
@@ -82,7 +82,7 @@ plugin repository.
 - [x] ZIP excludes `kakao_qgis_bridge/settings.json`.
 - [x] ZIP excludes generated test/output files.
 - [x] ZIP size is below the QGIS repository package limit.
-- [ ] Source code in the ZIP matches the public GitHub repository.
+- [x] Source code in the ZIP matches the public GitHub repository.
 
 ## Upload
 

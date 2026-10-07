@@ -79,6 +79,11 @@ kakao_qgis_bridge/
   plugin.py
   dock_widget.py
   external_bridge.py
+  mobility.py
+  mobility_client.py
+  sync_controller.py
+  history_repository.py
+  history_export.py
   settings.py
   settings.example.json
   web/
@@ -110,6 +115,18 @@ QGIS 보조 창인 `QDockWidget`을 정의합니다. 내부에 `QWebEngineView`�
 `kakao_qgis_bridge/external_bridge.py`
 
 QGIS 3 외부 브라우저 연동 모드에서 사용하는 로컬 HTTP 브리지 서버입니다. `http://localhost:8081/`에서 Kakao Viewer HTML을 제공하고, 브라우저와 QGIS 사이의 중심 좌표, Roadview 상태, 경로 요청, 경로 이력 이벤트를 JSON API로 중계합니다.
+
+`kakao_qgis_bridge/mobility.py`, `mobility_client.py`
+
+경로 요청 검증·쿼리 생성·응답 파싱과 Qt 네트워크 요청을 분리해 관리합니다. QGIS와 무관한 검증·파싱 로직은 일반 Python 단위 테스트로 확인할 수 있습니다.
+
+`kakao_qgis_bridge/sync_controller.py`
+
+QGIS 캔버스와 Kakao Viewer 사이의 양방향 위치 동기화, 좌표계 변환, 역방향 동기화 가드를 담당합니다.
+
+`kakao_qgis_bridge/history_repository.py`, `history_export.py`
+
+경로·안내 이력 메모리 레이어와 GPX XML 작성을 플러그인 진입점에서 분리해 관리합니다.
 
 `kakao_qgis_bridge/web/kakao_viewer.html`
 
@@ -439,6 +456,14 @@ http://localhost:8081
 - QGIS 플러그인 저장소 등록 후 안정 배포 기준에 맞춰 `metadata.txt` 버전을 `1.0.0`으로 올렸습니다.
 - `experimental=False`로 전환해 플러그인 저장소와 QGIS 플러그인 관리자에서 안정 버전으로 표시되도록 했습니다.
 - XML 보안 스캔 대응을 위해 GPX 내보내기 XML 생성 흐름을 점검하고, 표준 라이브러리 XML 파서 의존을 줄였습니다.
+
+### 2026-10-07 - 1.1.0 구조 안정화와 CI 자동화
+
+- 경로 검증·응답 파싱, Qt 네트워크 요청, 캔버스 동기화, 경로 이력 저장, GPX 작성을 전용 모듈로 분리했습니다.
+- 외부 브리지의 세션 토큰·Origin·요청 형식 검증을 강화하고 관련 회귀 테스트를 추가했습니다.
+- 일반 Python 단위 테스트와 QGIS 3.44·4.2 런타임 스모크 테스트를 추가했습니다.
+- GitHub Actions에서 Python 컴파일, 단위 테스트, 뷰어 JavaScript 구문 검사, 배포 ZIP 생성을 Windows와 Ubuntu에서 자동 실행합니다.
+- QGIS 3.44와 QGIS 4.2에 배포 ZIP을 재설치해 정상 작동을 확인했습니다.
 
 ## 다음 확장 후보
 

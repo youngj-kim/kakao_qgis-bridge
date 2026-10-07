@@ -394,7 +394,7 @@ class KakaoExternalBridgeServer:
                 bridge._events.put({"type": event_type, "payload": payload})
                 self._send_json({"ok": True})
 
-            def _authorized(self, token=""):
+            def _authorized(self, token=None):
                 _host, port = self.server.server_address
                 expected_hosts = {f"localhost:{port}", f"127.0.0.1:{port}"}
                 if self.headers.get("Host", "") not in expected_hosts:
@@ -410,9 +410,10 @@ class KakaoExternalBridgeServer:
                     self.send_error(403)
                     return False
 
-                supplied_token = token or self.headers.get(
-                    "X-Kakao-Bridge-Token",
-                    "",
+                supplied_token = (
+                    token
+                    if token is not None
+                    else self.headers.get("X-Kakao-Bridge-Token", "")
                 )
                 if not hmac.compare_digest(supplied_token, bridge._token):
                     self.send_error(403)

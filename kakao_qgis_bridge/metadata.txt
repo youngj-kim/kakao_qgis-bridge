@@ -3,8 +3,10 @@ name=Kakao QGIS Bridge
 qgisMinimumVersion=3.34
 qgisMaximumVersion=4.99
 description=Dock-based Kakao Map and Roadview viewer with bidirectional QGIS synchronization and Local search.
-version=1.1.0
-changelog=1.1.0
+version=1.1.1
+changelog=1.1.1
+    - Fixed a false-positive critical Bandit finding by using None instead of an empty string as the authorization-token default.
+    1.1.0
     - Refactored route validation, Mobility networking, canvas synchronization, route history, and GPX export into focused modules.
     - Hardened the external browser bridge with session-token, Origin, and request validation.
     - Added Python unit tests and QGIS 3.44 / 4.2 runtime smoke tests.

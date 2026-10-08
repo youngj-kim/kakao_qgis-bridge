@@ -1,7 +1,36 @@
-# QGIS Plugin Repository Release Checklist
+# GitHub and ZIP Distribution Checklist
 
-Use this checklist before uploading `Kakao QGIS Bridge` to the official QGIS
-plugin repository.
+Distribution scope (2026-10-08): GitHub source and ZIP files. The user has
+excluded uploading to the official QGIS plugin repository. Historical upload
+items below are retained as past planning, not current tasks.
+
+## 1.2.0 preparation status — 2026-10-07
+
+The checklist below this section records earlier release work. Its checked
+boxes are not evidence that all checks were repeated on the 1.2.0 ZIP.
+
+- [x] Update version, metadata changelog and root CHANGELOG.md to 1.2.0.
+- [x] Add standalone setup instructions inside the plugin ZIP and update about.
+- [x] Document both SDK domains, bridge fallback and the scope of KAKAO_MAP_BASE_URL.
+- [x] Document center-only sync, memory history, SHP loss and credential limits.
+- [x] Record actual runtime coverage: Windows QGIS 3.44.14 and 4.2.2.
+- [ ] Run the declared minimum QGIS 3.34 against this build. A leftover 3.34.12
+  directory has no Python/QGIS runtime and cannot provide execution evidence.
+  Keep the declared minimum unchanged; this does not establish incompatibility.
+- [ ] Confirm the Kakao SDK embedding terms and quota suitability.
+- [ ] Perform the final installed 1.2.0 SDK/browser check. Earlier user checks
+  and runtime regressions are recorded in refactoring-progress.md.
+- [ ] Commit/push the 1.2.0 metadata and documentation to GitHub and confirm
+  the CI result. Earlier refactoring commit: 3d9bc21 (CI passed).
+- [ ] Create a GitHub release/tag with a ZIP if a release is requested.
+
+Official QGIS plugin repository upload is outside the distribution scope.
+
+Candidate package: `dist/kakao_qgis_bridge-1.2.0.zip`.
+Package verification is recorded in refactoring-progress.md. Until the open
+items are resolved, treat it as a local release candidate.
+
+## Earlier release checklist (historical)
 
 ## Repository
 

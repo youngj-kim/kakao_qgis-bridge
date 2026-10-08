@@ -3,8 +3,15 @@ name=Kakao QGIS Bridge
 qgisMinimumVersion=3.34
 qgisMaximumVersion=4.99
 description=Dock-based Kakao Map and Roadview viewer with bidirectional QGIS synchronization and Local search.
-version=1.1.1
-changelog=1.1.1
+version=1.2.0
+changelog=1.2.0
+    - Fixed dock movement echoes and Roadview updates after map dragging.
+    - Added external bridge port fallback to 8082, state snapshots and isolated event handling.
+    - Hardened REST key validation, route response parsing and guidance type classification.
+    - Split history import/export, checked changes, display layers and styles into focused modules.
+    - Improved legacy history compatibility, SHP loss warnings and GPX XML character handling.
+    - Added regression checks using QGIS 3.44.14 and 4.2.2; QGIS 3.34 remains unverified.
+    1.1.1
     - Fixed a false-positive critical Bandit finding by using None instead of an empty string as the authorization-token default.
     1.1.0
     - Refactored route validation, Mobility networking, canvas synchronization, route history, and GPX export into focused modules.
@@ -14,7 +21,7 @@ changelog=1.1.1
     - Verified the packaged plugin in QGIS 3.44 and QGIS 4.2.
 author=yjkim
 email=contact@yjkim.dev
-about=Shows Kakao Maps JavaScript API content inside a QGIS dock widget and synchronizes QGIS, Kakao Map, and Roadview in both directions. Includes Local place/address search, Roadview position/direction display, Kakao Mobility route search, route guidance, and route history import/export. Requires user-provided Kakao JavaScript and REST API keys. Kakao tile URLs are not extracted or used as XYZ/TMS layers.
+about=Shows Kakao Maps JavaScript API content inside a QGIS dock widget and synchronizes center positions between QGIS, Kakao Map and Roadview. Includes Local search, Roadview direction display, Kakao Mobility route search, guidance and history import/export. Requires user-provided JavaScript and REST API keys. Register http://localhost:8081 and http://localhost:8082 as JavaScript SDK domains for external bridge fallback and simultaneous sessions. See the packaged README.md for setup and limits. Kakao tile URLs are not used as XYZ/TMS layers.
 category=Web
 icon=icon.png
 license=GPL-2.0-or-later

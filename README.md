@@ -1,6 +1,6 @@
 # Kakao QGIS Bridge
 
-QGIS 3.34 LTR 이상과 QGIS 4.0 / Qt 6 환경을 함께 고려하는 Python 플러그인입니다. Plugin Builder를 사용하지 않고 직접 관리할 수 있도록 `metadata.txt`, `__init__.py`, 플러그인 클래스, Dock Widget, Kakao Maps JavaScript API HTML 뷰어를 작게 분리했습니다.
+현재 버전은 **1.2.0**입니다. QGIS 3.34 이상과 QGIS 4 / Qt 6 환경을 대상으로 하는 Python 플러그인입니다. 실제 실행 검증은 Windows의 QGIS 3.44.14와 4.2.2에서 수행했으며, 최소 선언 버전인 3.34는 이번 버전에서 실행 검증하지 못했습니다. 누적 변경과 남은 제한은 [CHANGELOG.md](CHANGELOG.md)를 참고하세요.
 
 이 플러그인은 Kakao 지도 타일 URL을 추출하거나 QGIS XYZ/TMS 배경지도로 등록하지 않습니다. 대신 QGIS Dock Widget 안의 `QWebEngineView`에서 Kakao Maps JavaScript API를 로드하고, QGIS 기본 탐색 기능으로 변경된 캔버스 중심 좌표를 EPSG:4326으로 변환해 Kakao Map과 Roadview 중심으로 전달합니다.
 
@@ -48,7 +48,7 @@ QGIS 3처럼 Qt WebEngine을 사용할 수 없는 환경에서는 외부 브라�
 - Dock 내부 `QWebEngineView` 표시
 - Kakao Maps JavaScript API 지도 로드
 - QGIS 캔버스 중심 좌표를 EPSG:4326으로 변환
-- QGIS 기본 이동·확대·축소 후 Kakao 지도와 Roadview 동기화
+- QGIS 기본 이동·확대·축소 후 중심 좌표를 Kakao 지도와 Roadview에 전달 (줌·축척 동기화는 미지원)
 - 변환 좌표를 WebEngine의 Kakao 지도/로드뷰로 전달
 - Kakao 지도 드래그 중 QGIS 캔버스 중심 실시간 역방향 동기화
 - Roadview 위치 이동 시 QGIS 캔버스 중심 역방향 동기화
@@ -159,7 +159,7 @@ Kakao JavaScript 키, Mobility REST API 키와 WebEngine 기준 URL을 관리하
 1. [Kakao Developers](https://developers.kakao.com/)에 카카오 계정으로 로그인하고 개발자 등록을 완료합니다.
 2. 앱 관리 화면의 전체 앱 목록에서 `앱 생성`을 선택하고 앱 이름, 회사·단체명, 카테고리와 서비스 또는 프로젝트를 나타내는 대표 도메인을 입력합니다.
 3. 생성한 앱에서 `앱 > 플랫폼 키`로 이동합니다. 앱 생성 시 JavaScript 키와 REST API 키가 함께 생성됩니다.
-4. `JavaScript 키`를 선택하고 `JavaScript SDK 도메인`에 기본 주소인 `http://localhost:8081`을 등록합니다.
+4. `JavaScript 키`를 선택하고 `JavaScript SDK 도메인`에 `http://localhost:8081`과 `http://localhost:8082`를 모두 등록합니다. 외부 브리지의 대체 포트와 QGIS 동시 실행에 필요합니다.
 5. 플랫폼 키 화면의 JavaScript 키는 Kakao Map·Roadview·Local 검색에, REST API 키는 Kakao Mobility 경로 탐색에 사용합니다.
 6. 플러그인 최초 실행 입력창에 JavaScript 키를 입력하고, 최초 경로 생성 입력창에는 REST API 키를 입력합니다.
 
@@ -220,7 +220,7 @@ http://localhost:8081
 
 8081번 포트에서 별도의 로컬 웹 서버를 실행할 필요는 없습니다. 이 주소는 `QWebEngineView` 문서의 기준 URL과 Kakao JavaScript 키의 허용 출처를 일치시키기 위해 사용합니다.
 
-포트를 변경하려면 Windows 사용자 환경변수 `KAKAO_MAP_BASE_URL`을 원하는 기준 URL로 설정합니다. 예를 들어 9000번 포트로 바꾸려면 다음과 같이 설정합니다.
+내장 WebEngine의 기준 URL을 변경하려면 Windows 사용자 환경변수 `KAKAO_MAP_BASE_URL`을 설정합니다. 이 설정은 외부 브리지의 8081/8082 포트를 변경하지 않습니다. 예를 들어 내장 기준 URL을 9000번 포트로 바꾸려면 다음과 같이 설정합니다.
 
 ```powershell
 [Environment]::SetEnvironmentVariable("KAKAO_MAP_BASE_URL", "http://localhost:9000/kakao_qgis_bridge/", "User")
@@ -235,6 +235,10 @@ http://localhost:9000
 환경변수의 프로토콜·호스트·포트와 Kakao Developers 등록값이 일치해야 합니다. 변경 후에는 QGIS를 완전히 종료했다가 다시 실행하세요. 환경변수를 삭제하면 기본값인 8081번 포트로 돌아갑니다.
 
 ## 설치 방법
+
+배포는 GitHub 소스와 ZIP 기준으로 진행하며 공식 QGIS 플러그인 저장소 업로드는 계획하지 않습니다.
+
+배포 ZIP은 QGIS의 플러그인 관리자에서 `ZIP에서 설치`를 선택해 설치할 수 있습니다. 기존 버전에서 업데이트한 뒤에는 QGIS를 다시 시작하세요. ZIP 안의 `kakao_qgis_bridge/README.md`에도 키·포트 설정과 주요 제한을 포함합니다.
 
 QGIS 플러그인 디렉터리에 `kakao_qgis_bridge` 폴더를 복사하거나 심볼릭 링크로 연결합니다.
 
@@ -255,7 +259,7 @@ QgsApplication.qgisSettingsDirPath()
 
 ## QGIS 3 외부 브라우저 연동 모드
 
-QGIS 4에서는 Dock 내부의 Kakao Map/Roadview 창을 기본 모드로 사용합니다.
+Qt WebEngine/WebChannel을 사용할 수 있는 환경에서는 Dock 내부의 Kakao Map/Roadview를 사용합니다. 해당 모듈을 불러올 수 없으면 외부 브라우저 모드를 사용하며, 실제 실패 원인은 Dock 안내에 표시됩니다.
 
 QGIS 3에서는 외부 브라우저 연동 모드로 사용할 수 있습니다. 플러그인이 기본 포트 8081에 로컬 브리지 서버를 띄우고, 이미 사용 중이면 8082로 연결합니다. `외부 연동 창 열기` 버튼은 실제 연결된 포트의 Kakao Viewer를 기본 브라우저에서 엽니다. QGIS 3·4의 외부 연동을 동시에 사용할 수 있으며, 먼저 실행한 서버가 8081을 사용합니다. 두 포트가 모두 사용 중이면 안내를 표시합니다.
 

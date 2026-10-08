@@ -481,3 +481,10 @@ metadata와 설치 설명 및 변경 기록을 1.2.1 후보로 갱신했다.
 패키지는 dist/kakao_qgis_bridge-1.2.1.zip이며 기존 1.2.0 ZIP을 유지한다.
 실제 Kakao SDK 설치 화면과 선언 최소 3.34 실행 확인은 자동 검사와 별개다.
 범위와 한계는 route-input-refactoring.md에 기록했다.
+
+배포 후보 ZIP 45개 파일의 무결성·루트 제품 바이트 일치·커밋된 HEAD 텍스트
+일치·설정/캐시 제외를 확인했다. 기존 1.2.0 ZIP 두 개의 SHA-256을 유지했다.
+후보 SHA-256은 7c58c33fcd4f9249e8ed1154d750e40aa7f4be6fde428669de6acd0559d8cb14다.
+누적 변경을 3e35f5a로 main에 푸시했고 Actions 37752581869의 Windows/Ubuntu가
+모두 success였다. 설치 플러그인과 실제 API 키는 변경하지 않았다.
+최신 후보의 SDK 화면 확인, 선언 최소 3.34 검증 및 release/tag는 남겨둔다.

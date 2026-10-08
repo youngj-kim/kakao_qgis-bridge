@@ -18,7 +18,8 @@ items below do not establish that this ZIP was manually installed and tested.
 - [x] Run Bandit 1.9.4: no findings, no skipped files or disabled test rules.
 - [x] Update metadata, descriptions, changelog and installation notes to 1.2.1 candidate.
 - [x] Verify candidate ZIP: 45 files, integrity/source agreement and local settings/cache excluded.
-- [ ] Commit/push cumulative source changes and confirm the new GitHub CI run.
+- [x] Commit/push cumulative source changes: 3e35f5a, main.
+- [x] Confirm source CI: Windows/Ubuntu success, Actions run 37752581869.
 - [ ] Manually install the latest candidate and test actual Kakao SDK in QGIS 3 and 4.
 - [ ] Validate declared minimum QGIS 3.34 when a runnable environment is available.
 - [ ] Confirm SDK terms and quota suitability for the intended use.

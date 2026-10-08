@@ -319,6 +319,42 @@ class BridgeStateTests(unittest.TestCase):
             self.assertFalse(self.server.queue_event({"type": "move_center", "payload": {"text": "x" * 100}}))
         self.assertEqual(self.server.drain_events(), [event])
 
+    def test_project_boundary_discards_queue_and_resumes_new_input(self):
+        event = {"type": "request_route", "payload": {}}
+        self.assertTrue(self.server.queue_event(event))
+        self.server.pause_events()
+        self.assertEqual(self.server.drain_events(), [])
+        self.assertFalse(self.server.queue_event(event))
+        self.server.resume_events()
+        self.assertTrue(self.server.queue_event(event))
+        self.assertEqual(self.server.drain_events(), [event])
+
+    def test_event_copy_crossing_project_boundary_is_rejected(self):
+        original_copy = external_bridge.copy.deepcopy
+        def crossing_copy(event):
+            result = original_copy(event)
+            self.server.pause_events()
+            self.server.resume_events()
+            return result
+        with patch.object(external_bridge.copy, "deepcopy", side_effect=crossing_copy):
+            self.assertFalse(self.server.queue_event({"type": "request_route", "payload": {}}))
+        self.assertEqual(self.server.drain_events(), [])
+
+    def test_project_snapshot_does_not_replay_old_center_or_input_command(self):
+        self.server.set_center(127, 37.5)
+        self.server.emit_signal("loadRouteHistoryInput", "old-input")
+        self.server.emit_signal("routeGuidanceChanged", "old-route")
+        self.server.pause_events()
+        self.server.reset_project_state()
+        self.server.emit_signal("projectReset", 1)
+        self.server.emit_signal("routeGuidanceChanged", "empty-route")
+        self.server.resume_events()
+        state = self.server.events_since(0)
+        self.assertTrue(state["resync_required"])
+        self.assertIsNone(state["snapshot"]["center"])
+        self.assertNotIn("loadRouteHistoryInput", state["snapshot"]["signals"])
+        self.assertEqual(state["snapshot"]["signals"]["projectReset"]["args"], [1])
+
 
 if __name__ == "__main__":
     unittest.main()

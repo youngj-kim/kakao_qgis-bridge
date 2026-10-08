@@ -1125,6 +1125,7 @@
     const routeWaypoints = [];
     let nextWaypointId = 1;
     let routeBusy = false;
+    let lastProjectEpoch = null;
     let routeSearchTimer = null;
     let routeGuidance = [];
     let latestRouteGuidancePayload = null;
@@ -1780,6 +1781,16 @@
           }
         });
       }
+      if (qgisBridge.projectReset) {
+        qgisBridge.projectReset.connect((epoch) => {
+          if (epoch === lastProjectEpoch) return;
+          lastProjectEpoch = epoch;
+          routeBusy = false;
+          clearRouteInputs(true, false);
+          clearRoutePath();
+          updateRouteControls();
+        });
+      }
     }
 
     function initQgisBridge() {
@@ -2210,7 +2221,7 @@
       setStatus(`${routeWaypoints.length}번째 경유지를 추가했습니다.`);
     }
 
-    function clearRouteInputs(resetOptions = true) {
+    function clearRouteInputs(resetOptions = true, notifyQgis = true) {
       window.clearTimeout(routeSearchTimer);
       searchRequestId += 1;
       searchResults.hidden = true;
@@ -2238,7 +2249,7 @@
       routeVehicleOptions.hidden = true;
       routeVehicleToggle.setAttribute("aria-expanded", "false");
       updateRouteVehicleSummary();
-      if (qgisBridge) {
+      if (qgisBridge && notifyQgis) {
         qgisBridge.clearRoutePoints();
       }
       updateRouteControls();

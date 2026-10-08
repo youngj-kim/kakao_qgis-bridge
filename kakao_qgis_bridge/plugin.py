@@ -66,12 +66,10 @@ from .settings import (
 )
 from .sync_controller import CanvasSyncController
 
-
 MENU_NAME = "&Kakao QGIS Bridge"
 LOG_TAG = "Kakao QGIS Bridge"
 # An internal origin cannot collide with an external browser's client ID.
 _DOCK_SYNC_SOURCE = object()
-
 
 class KakaoQgisBridgePlugin:
     def __init__(self, iface):
@@ -100,8 +98,13 @@ class KakaoQgisBridgePlugin:
         }
         self._last_route_status = None
         self.mobility_client = MobilityClient()
-        self.mobility_client.succeeded.connect(self._handle_route_result)
-        self.mobility_client.failed.connect(self._handle_route_failure)
+        self._project_epoch = 0
+        self._project_transitioning = False
+        self._project_signals_connected = False
+        self._active_route_request = None
+        self._route_request_epoch = None
+        self.mobility_client.succeeded.connect(self._receive_route_result)
+        self.mobility_client.failed.connect(self._receive_route_failure)
         self.sync_controller = CanvasSyncController(
             self.iface,
             self._has_canvas_sync_target,
@@ -114,7 +117,6 @@ class KakaoQgisBridgePlugin:
         self.external_bridge_timer.timeout.connect(
             self._process_external_bridge_events
         )
-
 
     @property
     def roadview_layer(self):
@@ -197,6 +199,11 @@ class KakaoQgisBridgePlugin:
         self.history_repository.guidance_layer = layer
 
     def initGui(self):
+        if not self._project_signals_connected:
+            project = QgsProject.instance()
+            project.aboutToBeCleared.connect(self._begin_project_transition)
+            project.cleared.connect(self._finish_project_transition)
+            self._project_signals_connected = True
         self.action = QAction(
             QIcon(str(PLUGIN_DIR / "icon.png")),
             "Kakao Map / Roadview",
@@ -293,6 +300,13 @@ class KakaoQgisBridgePlugin:
         self.iface.addPluginToMenu(MENU_NAME, self.export_gpx_action)
 
     def unload(self):
+        if self._project_signals_connected:
+            project = QgsProject.instance()
+            project.aboutToBeCleared.disconnect(self._begin_project_transition)
+            project.cleared.disconnect(self._finish_project_transition)
+            self._project_signals_connected = False
+        self._active_route_request = None
+        self._route_request_epoch = None
         self._deactivate_canvas_sync()
 
         if self.action is not None:
@@ -350,6 +364,55 @@ class KakaoQgisBridgePlugin:
 
         self.display_layers.remove_all()
         self.history_repository.clear()
+
+    def _begin_project_transition(self):
+        self._project_epoch += 1
+        self._project_transitioning = True
+        self._active_route_request = None
+        self._route_request_epoch = None
+        self.mobility_client.cancel()
+        self.sync_controller.reset_pending()
+        if self.external_bridge_server is not None:
+            self.external_bridge_server.pause_events()
+
+    def _finish_project_transition(self):
+        self.display_layers.forget_all()
+        self.active_route_history_id = None
+        # The repository and its recovery block belong to the plugin session.
+        for layer in (self.route_history_layer, self.guidance_history_layer):
+            if layer is not None:
+                layer.removeSelection()
+        server = self.external_bridge_server
+        if server is not None:
+            server.reset_project_state()
+        if self.dock is not None:
+            self.dock.reset_project(self._project_epoch)
+        if server is not None:
+            server.emit_signal("projectReset", self._project_epoch)
+        self._set_route_guidance({"history_id": "", "route_id": "", "summary": {},
+                                  "path": [], "guides": []})
+        self._sync_route_history_panel()
+        self._set_route_status(False, "프로젝트가 변경되어 현재 경로와 이전 요청을 초기화했습니다.")
+        self._project_transitioning = False
+        if server is not None:
+            server.resume_events()
+        self.sync_controller.schedule()
+
+    def _receive_route_result(self, result, route_request):
+        if (self._project_transitioning or route_request is not self._active_route_request
+                or self._route_request_epoch != self._project_epoch):
+            return
+        self._active_route_request = None
+        self._route_request_epoch = None
+        self._handle_route_result(result, route_request)
+
+    def _receive_route_failure(self, message):
+        if (self._project_transitioning or self._active_route_request is None
+                or self._route_request_epoch != self._project_epoch):
+            return
+        self._active_route_request = None
+        self._route_request_epoch = None
+        self._handle_route_failure(message)
 
     def toggle_dock(self, checked):
         if checked:
@@ -568,7 +631,7 @@ class KakaoQgisBridgePlugin:
 
     def _process_external_bridge_events(self):
         server = self.external_bridge_server
-        if server is None or self._processing_external_bridge_events:
+        if server is None or self._processing_external_bridge_events or self._project_transitioning:
             return
 
         self._processing_external_bridge_events = True
@@ -578,9 +641,10 @@ class KakaoQgisBridgePlugin:
             self._processing_external_bridge_events = False
 
     def _dispatch_external_bridge_events(self, server):
+        epoch = self._project_epoch
         for event in server.drain_events():
             # A dialog can allow plugin shutdown before processing resumes.
-            if self.external_bridge_server is not server:
+            if self.external_bridge_server is not server or epoch != self._project_epoch:
                 break
             event_type = None
             try:
@@ -699,6 +763,8 @@ class KakaoQgisBridgePlugin:
         self.sync_controller.schedule()
 
     def _sync_canvas_center(self, source=None):
+        if self._project_transitioning:
+            return
         if not self._has_canvas_sync_target():
             return
 
@@ -728,6 +794,8 @@ class KakaoQgisBridgePlugin:
         self._handle_viewer_moved(lon, lat, source=_DOCK_SYNC_SOURCE)
 
     def _handle_viewer_moved(self, lon, lat, source=None):
+        if self._project_transitioning:
+            return
         if not math.isfinite(lon) or not math.isfinite(lat):
             return
         if not -180.0 <= lon <= 180.0 or not -90.0 <= lat <= 90.0:
@@ -751,6 +819,8 @@ class KakaoQgisBridgePlugin:
         self._sync_canvas_center(source=source)
 
     def _update_roadview_layer(self, lon, lat, pan, tilt, zoom, pano_id):
+        if self._project_transitioning:
+            return
         return self.display_layers.update_roadview_layer(lon, lat, pan, tilt, zoom, pano_id)
 
     def _ensure_roadview_layer(self):
@@ -772,6 +842,9 @@ class KakaoQgisBridgePlugin:
         origin_label,
         destination_label,
     ):
+        if self._project_transitioning:
+            return
+        epoch = self._project_epoch
         try:
             route_request = normalize_route_request(
                 origin_lon,
@@ -816,12 +889,17 @@ class KakaoQgisBridgePlugin:
                 return
             rest_key = kakao_rest_api_key()
 
+        if epoch != self._project_epoch:
+            return
+        self._active_route_request = route_request
+        self._route_request_epoch = epoch
         self.mobility_client.request_route(rest_key, route_request)
 
     def _handle_route_failure(self, message):
         self._set_route_status(False, message)
 
     def _handle_route_result(self, result, route_request):
+        epoch = self._project_epoch
         points = [QgsPointXY(lon, lat) for lon, lat in result.points]
         distance = result.distance
         duration = result.duration
@@ -911,6 +989,8 @@ class KakaoQgisBridgePlugin:
             vehicle_options=vehicle_options,
             guides=guides,
         )
+        if epoch != self._project_epoch:
+            return
         if history_saved:
             self.active_route_history_id = history_id
         else:
@@ -1011,6 +1091,7 @@ class KakaoQgisBridgePlugin:
 
     def _load_route_history_file(self, _checked=False):
         project_home = QgsProject.instance().homePath()
+        epoch = self._project_epoch
         filename, _selected_filter = QFileDialog.getOpenFileName(
             self.iface.mainWindow(),
             "경로 이력 불러오기",
@@ -1022,7 +1103,7 @@ class KakaoQgisBridgePlugin:
                 "Shapefile (*.shp)"
             ),
         )
-        if not filename:
+        if not filename or epoch != self._project_epoch:
             return
 
         input_path = Path(filename)
@@ -1060,13 +1141,14 @@ class KakaoQgisBridgePlugin:
 
     def _load_styled_gpx(self, _checked=False):
         project_home = QgsProject.instance().homePath()
+        epoch = self._project_epoch
         filename, _selected_filter = QFileDialog.getOpenFileName(
             self.iface.mainWindow(),
             "GPX 스타일 적용해서 불러오기",
             project_home or "",
             "GPX (*.gpx)",
         )
-        if not filename:
+        if not filename or epoch != self._project_epoch:
             return
 
         gpx_path = Path(filename)
@@ -1264,6 +1346,7 @@ class KakaoQgisBridgePlugin:
         )
 
     def _delete_route_history(self, history_id):
+        epoch = self._project_epoch
         route_feature = self._route_feature_for_history(history_id)
         if route_feature is None:
             return
@@ -1279,7 +1362,7 @@ class KakaoQgisBridgePlugin:
             MSGBOX_YES | MSGBOX_NO,
             MSGBOX_NO,
         )
-        if answer != MSGBOX_YES:
+        if answer != MSGBOX_YES or epoch != self._project_epoch:
             return
 
         was_active_history = history_id == self.active_route_history_id
@@ -1301,6 +1384,7 @@ class KakaoQgisBridgePlugin:
         )
 
     def _delete_all_route_histories(self):
+        epoch = self._project_epoch
         if (
             self.route_history_layer is None
             or self.route_history_layer.featureCount() == 0
@@ -1314,7 +1398,7 @@ class KakaoQgisBridgePlugin:
             MSGBOX_YES | MSGBOX_NO,
             MSGBOX_NO,
         )
-        if answer != MSGBOX_YES:
+        if answer != MSGBOX_YES or epoch != self._project_epoch:
             return
 
         try:
@@ -1441,13 +1525,14 @@ class KakaoQgisBridgePlugin:
             if project_home
             else default_name
         )
+        epoch = self._project_epoch
         filename, _selected_filter = QFileDialog.getSaveFileName(
             self.iface.mainWindow(),
             dialog_title,
             default_path,
             selected_format,
         )
-        if not filename:
+        if not filename or epoch != self._project_epoch:
             return
 
         route_layer = self._single_history_layer(
@@ -1821,13 +1906,14 @@ class KakaoQgisBridgePlugin:
             if project_home
             else default_name
         )
+        epoch = self._project_epoch
         filename, _selected_filter = QFileDialog.getSaveFileName(
             self.iface.mainWindow(),
             "경로 이력 GeoPackage 저장",
             default_path,
             "GeoPackage (*.gpkg)",
         )
-        if not filename:
+        if not filename or epoch != self._project_epoch:
             return
 
         output_path = Path(filename)
@@ -1889,13 +1975,14 @@ class KakaoQgisBridgePlugin:
             if project_home
             else default_name
         )
+        epoch = self._project_epoch
         filename, _selected_filter = QFileDialog.getSaveFileName(
             self.iface.mainWindow(),
             "경로·안내 이력 GeoJSON 내보내기",
             default_path,
             "GeoJSON (*.geojson)",
         )
-        if not filename:
+        if not filename or epoch != self._project_epoch:
             return
 
         route_path, guidance_path = self._geojson_output_paths(filename)
@@ -1968,13 +2055,14 @@ class KakaoQgisBridgePlugin:
             if project_home
             else default_name
         )
+        epoch = self._project_epoch
         filename, _selected_filter = QFileDialog.getSaveFileName(
             self.iface.mainWindow(),
             "경로·안내 이력 Shapefile 내보내기",
             default_path,
             "Shapefile (*.shp)",
         )
-        if not filename:
+        if not filename or epoch != self._project_epoch:
             return
 
         route_path, guidance_path = self._paired_output_paths(
@@ -2056,13 +2144,14 @@ class KakaoQgisBridgePlugin:
             if project_home
             else default_name
         )
+        epoch = self._project_epoch
         filename, _selected_filter = QFileDialog.getSaveFileName(
             self.iface.mainWindow(),
             "경로·안내 이력 GPX 내보내기",
             default_path,
             "GPX (*.gpx)",
         )
-        if not filename:
+        if not filename or epoch != self._project_epoch:
             return
 
         output_path = Path(filename)
@@ -2150,11 +2239,9 @@ class KakaoQgisBridgePlugin:
     def _gpx_waypoint_renderer(self):
         return self.style_factory.gpx_waypoint_renderer()
 
-
     @staticmethod
     def _waypoints_from_history(route_feature):
         return history_values.waypoints_from_history(route_feature)
-
 
     @staticmethod
     def _shapefile_sidecar_paths(path):
@@ -2167,7 +2254,6 @@ class KakaoQgisBridgePlugin:
     @staticmethod
     def _guidance_shapefile_fields():
         return HistoryExportService._guidance_shapefile_fields()
-
 
     def _write_history_layer(
         self, source_layer, output_path, layer_name, geometry_name,
@@ -2252,6 +2338,8 @@ class KakaoQgisBridgePlugin:
         self._set_route_guidance(payload)
 
     def _set_route_point(self, point_id, lon, lat):
+        if self._project_transitioning:
+            return
         return self.display_layers.set_route_point(point_id, lon, lat)
 
     def _ensure_route_points_layer(self):

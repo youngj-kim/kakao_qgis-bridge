@@ -7,6 +7,10 @@ class DisplayLayerManager:
     def __init__(self, project, style_factory):
         self.project = project
         self.style_factory = style_factory
+        self.forget_all()
+
+    def forget_all(self):
+        """Release stale references after the project has removed its layers."""
         self.roadview_layer = None
         self.roadview_feature_id = None
         self.route_layer = None

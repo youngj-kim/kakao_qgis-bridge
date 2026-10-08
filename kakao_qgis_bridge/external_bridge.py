@@ -25,6 +25,7 @@ EXTERNAL_BRIDGE_SCRIPT = r"""
     routeStatusChanged: [],
     routeGuidanceChanged: [],
     routeHistoryChanged: [],
+    projectReset: [],
     loadRouteHistoryInput: []
   };
   let lastCenterSequence = -1;
@@ -102,7 +103,7 @@ EXTERNAL_BRIDGE_SCRIPT = r"""
   }
 
   function applySnapshot(state) {
-    for (const name of ["routeGuidanceChanged", "routeHistoryChanged", "routeStatusChanged"]) {
+    for (const name of ["projectReset", "routeGuidanceChanged", "routeHistoryChanged", "routeStatusChanged"]) {
       const event = (state.signals || {})[name];
       if (event) {
         dispatch(name, event.args || []);
@@ -159,6 +160,7 @@ EXTERNAL_BRIDGE_SCRIPT = r"""
     routeStatusChanged: signal("routeStatusChanged"),
     routeGuidanceChanged: signal("routeGuidanceChanged"),
     routeHistoryChanged: signal("routeHistoryChanged"),
+    projectReset: signal("projectReset"),
     loadRouteHistoryInput: signal("loadRouteHistoryInput"),
     moveQgisCenter(lon, lat) {
       post("/api/move-center", { lon, lat });
@@ -261,7 +263,7 @@ MAX_OUTBOUND_EVENTS = 100
 MAX_OUTBOUND_EVENT_BYTES = 4 * 1024 * 1024
 MAX_PENDING_EVENTS = 256
 MAX_PENDING_EVENT_BYTES = 1024 * 1024
-STATE_SIGNALS = {"routeStatusChanged", "routeGuidanceChanged", "routeHistoryChanged"}
+STATE_SIGNALS = {"routeStatusChanged", "routeGuidanceChanged", "routeHistoryChanged", "projectReset"}
 TRANSIENT_SIGNALS = {"loadRouteHistoryInput"}
 COALESCED_EVENTS = {"move_center", "roadview_state"}
 EXTERNAL_EVENT_PATHS = {
@@ -307,6 +309,8 @@ class KakaoExternalBridgeServer:
         self._events = deque()
         self._event_lock = threading.Lock()
         self._pending_bytes = 0
+        self._accepting_events = True
+        self._project_epoch = 0
         self._outbound_events = deque()
         self._outbound_bytes = 0
         self._event_floor = 1
@@ -393,10 +397,35 @@ class KakaoExternalBridgeServer:
             self._pending_bytes = 0
             return events
 
+    def pause_events(self):
+        with self._event_lock:
+            self._project_epoch += 1
+            self._accepting_events = False
+            self._events.clear()
+            self._pending_bytes = 0
+
+    def reset_project_state(self):
+        with self._state_lock:
+            self._center = None
+            self._signals.clear()
+            self._outbound_events.clear()
+            self._outbound_bytes = 0
+            self._event_floor = self._outbound_sequence + 1
+
+    def resume_events(self):
+        with self._event_lock:
+            self._accepting_events = True
+
     def queue_event(self, event):
+        with self._event_lock:
+            epoch = self._project_epoch
+            if not self._accepting_events:
+                return False
         event = copy.deepcopy(event)
         size = len(json.dumps(event, ensure_ascii=False).encode("utf-8"))
         with self._event_lock:
+            if not self._accepting_events or epoch != self._project_epoch:
+                return False
             replaced_index = None
             replaced_size = 0
             # Coalesce motion updates only after the last command barrier.

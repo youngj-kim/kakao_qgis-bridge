@@ -34,6 +34,8 @@ Kakao Local 검색으로 장소명과 주소를 찾고, 검색 결과를 선택�
 
 경로 검색 결과는 현재 세션의 이력 탭에 누적됩니다. 이력은 다시 불러오거나 삭제하거나 GeoPackage, GeoJSON, Shapefile, GPX로 내보낼 수 있습니다.
 
+프로젝트를 새로 만들거나 다른 프로젝트로 전환하면 현재 경로·안내·입력 핀과 이전 경로 요청은 초기화됩니다. 세션 이력은 유지되며 이력 탭에서 선택하면 새 프로젝트에 다시 표시할 수 있습니다. 표시 레이어 하나를 삭제하는 동작은 프로젝트 전환과 구분합니다.
+
 ![Route history panel](docs/screenshots/09-route-history.png)
 
 QGIS 3처럼 Qt WebEngine을 사용할 수 없는 환경에서는 외부 브라우저 연동 모드로 같은 Kakao Viewer를 사용할 수 있습니다.

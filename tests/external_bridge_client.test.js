@@ -136,3 +136,41 @@ test("failed route POST releases busy state through failure signal", async () =>
   assert.equal(failures[0].ok, false);
   assert.match(failures[0].message, /503/);
 });
+
+
+test("project snapshot resets inputs before restoring route and history", async () => {
+  const h = harness();
+  const order = [];
+  h.bridge.projectReset.connect((epoch) => order.push(`reset:${epoch}`));
+  h.bridge.routeGuidanceChanged.connect(() => order.push("guidance"));
+  h.bridge.routeHistoryChanged.connect(() => order.push("history"));
+  h.bridge.loadRouteHistoryInput.connect(() => assert.fail("Old input replayed"));
+  h.respond({ sequence: 30, signals: {
+    projectReset: { args: [2] },
+    routeGuidanceChanged: { args: ["empty"] },
+    routeHistoryChanged: { args: ["session-history"] },
+  }, center: null });
+  h.bridge.start();
+  await h.tick(0);
+  assert.deepEqual(order, ["reset:2", "guidance", "history"]);
+});
+
+test("viewer reset releases busy state once per project epoch", () => {
+  const html = fs.readFileSync(path.join(__dirname, "..", "kakao_qgis_bridge", "web", "kakao_viewer.html"), "utf8");
+  const handler = html.match(/qgisBridge.projectReset.connect\((\(epoch\) => \{[^]*?\n        \})\);/)[1];
+  const calls = [];
+  const context = vm.createContext({
+    clearRouteInputs: (resetOptions, notifyQgis) => calls.push(["inputs", resetOptions, notifyQgis]),
+    clearRoutePath: () => calls.push(["path"]),
+    updateRouteControls: () => calls.push(["controls"]),
+  });
+  vm.runInContext(`let routeBusy = true; let lastProjectEpoch = null; const reset = ${handler}; reset(1);`, context);
+  assert.equal(vm.runInContext("routeBusy", context), false);
+  assert.deepEqual(calls, [["inputs", true, false], ["path"], ["controls"]]);
+  vm.runInContext("routeBusy = true; reset(1);", context);
+  assert.equal(vm.runInContext("routeBusy", context), true);
+  assert.equal(calls.length, 3);
+  vm.runInContext("reset(2);", context);
+  assert.equal(vm.runInContext("routeBusy", context), false);
+  assert.equal(calls.length, 6);
+});

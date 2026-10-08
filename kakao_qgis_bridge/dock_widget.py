@@ -74,6 +74,7 @@ def web_runtime_diagnostic():
 
 
 class KakaoWebBridge(QObject):
+    projectReset = pyqtSignal(int)
     centerRequested = pyqtSignal(float, float)
     roadviewStateChanged = pyqtSignal(float, float, float, float, float, str)
     routeRequested = pyqtSignal(
@@ -304,6 +305,10 @@ class KakaoMapDockWidget(QDockWidget):
     def set_route_status(self, success, message):
         if self.web_bridge is not None:
             self.web_bridge.routeStatusChanged.emit(bool(success), str(message))
+
+    def reset_project(self, epoch):
+        if self.web_bridge is not None:
+            self.web_bridge.projectReset.emit(epoch)
 
     def set_route_guidance(self, payload):
         if self.web_bridge is not None:

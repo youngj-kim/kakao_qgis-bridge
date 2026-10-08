@@ -73,6 +73,11 @@ class CanvasSyncController(QObject):
         self._applied_crs = None
         self.schedule()
 
+    def reset_pending(self):
+        self.sync_timer.stop()
+        self._applied_center = None
+        self._applied_crs = None
+
     def begin_reverse_sync(self, center):
         self.sync_timer.stop()
         self._applied_center = QgsPointXY(center)

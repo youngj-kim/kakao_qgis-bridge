@@ -66,10 +66,12 @@ from .settings import (
 )
 from .sync_controller import CanvasSyncController
 
+
 MENU_NAME = "&Kakao QGIS Bridge"
 LOG_TAG = "Kakao QGIS Bridge"
 # An internal origin cannot collide with an external browser's client ID.
 _DOCK_SYNC_SOURCE = object()
+
 
 class KakaoQgisBridgePlugin:
     def __init__(self, iface):
@@ -79,6 +81,8 @@ class KakaoQgisBridgePlugin:
         self.settings_action = None
         self.rest_settings_action = None
         self.load_history_action = None
+        self.compare_routes_action = None
+        self.comparison_dialog = None
         self.load_gpx_action = None
         self.save_history_action = None
         self.export_geojson_action = None
@@ -117,6 +121,7 @@ class KakaoQgisBridgePlugin:
         self.external_bridge_timer.timeout.connect(
             self._process_external_bridge_events
         )
+
 
     @property
     def roadview_layer(self):
@@ -247,6 +252,10 @@ class KakaoQgisBridgePlugin:
         self.load_history_action.triggered.connect(self._load_route_history_file)
         self.iface.addPluginToMenu(MENU_NAME, self.load_history_action)
 
+        self.compare_routes_action = QAction("GPKG 경로 비교...", self.iface.mainWindow())
+        self.compare_routes_action.triggered.connect(self._open_route_comparison)
+        self.iface.addPluginToMenu(MENU_NAME, self.compare_routes_action)
+
         self.load_gpx_action = QAction(
             QIcon.fromTheme("document-open"),
             "GPX 스타일 적용해서 불러오기...",
@@ -300,6 +309,12 @@ class KakaoQgisBridgePlugin:
         self.iface.addPluginToMenu(MENU_NAME, self.export_gpx_action)
 
     def unload(self):
+        if self.comparison_dialog is not None:
+            self.comparison_dialog.dispose()
+            self.comparison_dialog = None
+        if self.compare_routes_action is not None:
+            self.iface.removePluginMenu(MENU_NAME, self.compare_routes_action)
+            self.compare_routes_action = None
         if self._project_signals_connected:
             project = QgsProject.instance()
             project.aboutToBeCleared.disconnect(self._begin_project_transition)
@@ -364,6 +379,14 @@ class KakaoQgisBridgePlugin:
 
         self.display_layers.remove_all()
         self.history_repository.clear()
+
+    def _open_route_comparison(self):
+        from .route_comparison_dialog import RouteComparisonDialog
+        if self.comparison_dialog is None:
+            self.comparison_dialog = RouteComparisonDialog(self.iface)
+        self.comparison_dialog.show()
+        self.comparison_dialog.raise_()
+        self.comparison_dialog.activateWindow()
 
     def _begin_project_transition(self):
         self._project_epoch += 1
@@ -2239,9 +2262,11 @@ class KakaoQgisBridgePlugin:
     def _gpx_waypoint_renderer(self):
         return self.style_factory.gpx_waypoint_renderer()
 
+
     @staticmethod
     def _waypoints_from_history(route_feature):
         return history_values.waypoints_from_history(route_feature)
+
 
     @staticmethod
     def _shapefile_sidecar_paths(path):
@@ -2254,6 +2279,7 @@ class KakaoQgisBridgePlugin:
     @staticmethod
     def _guidance_shapefile_fields():
         return HistoryExportService._guidance_shapefile_fields()
+
 
     def _write_history_layer(
         self, source_layer, output_path, layer_name, geometry_name,

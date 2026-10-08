@@ -36,6 +36,8 @@ from . import history_values
 from .history_repository import HistoryRepository
 from .history_operations import HistoryOperationError
 from .history_import_service import HistoryImportService
+from .history_ui_controller import HistoryUiCallbacks, HistoryUiController
+from .history_export_controller import HistoryExportCallbacks, HistoryExportController
 from .style_factory import StyleFactory
 from .display_layers import DisplayLayerManager
 from .history_formats import (
@@ -96,6 +98,31 @@ class KakaoQgisBridgePlugin:
             self.style_factory.route_guidance_renderer,
         )
         self.history_import_service = HistoryImportService(self.history_repository)
+        self.history_export_ui = HistoryExportController(
+            self.history_repository,
+            HistoryExportCallbacks(
+                current_epoch=lambda: self._project_epoch,
+                current_iface=lambda: self.iface,
+                write_geopackage=lambda *args: self._write_history_layer(*args),
+                write_geojson=lambda *args: self._write_geojson_history_layer(*args),
+                write_shapefile=lambda *args: self._write_shapefile_history_layer(*args),
+                write_gpx=lambda *args: self._write_gpx_history(*args),
+            ),
+        )
+        self.history_ui = HistoryUiController(
+            self.iface,
+            self.history_repository,
+            HistoryUiCallbacks(
+                current_epoch=lambda: self._project_epoch,
+                active_history=lambda: self.active_route_history_id,
+                show_history=self._show_route_history,
+                load_input=self._send_route_history_input,
+                clear_display=self._clear_current_route_display,
+                publish_history=self._sync_route_history_panel,
+                update_actions=self._update_history_action_state,
+                handle_error=self._handle_history_operation_error,
+            ),
+        )
         self.active_route_history_id = None
         self._current_guidance_payload = {
             "history_id": "", "route_id": "", "summary": {}, "path": [], "guides": [],
@@ -1253,64 +1280,12 @@ class KakaoQgisBridgePlugin:
         self._sync_route_history_panel(self.active_route_history_id)
 
     def _route_history_payload(self, selected_history_id=None):
-        if self.route_history_layer is None:
-            return {
-                "selected_history_id": selected_history_id or "",
-                "items": [],
-            }
-
-        history_index = self.route_history_layer.fields().indexOf("history_id")
-        items = []
-        for feature in self.route_history_layer.getFeatures():
-            history_id = str(feature[history_index] or "")
-            if not history_id:
-                continue
-            items.append(
-                {
-                    "history_id": history_id,
-                    "searched_at": str(feature["searched_at"] or ""),
-                    "origin_name": str(feature["origin_name"] or "출발지"),
-                    "destination_name": str(
-                        feature["destination_name"] or "도착지"
-                    ),
-                    "distance_m": self._safe_number(feature["distance_m"]),
-                    "duration_s": self._safe_number(feature["duration_s"]),
-                    "guidance_count": self._safe_number(
-                        feature["guidance_count"]
-                    ),
-                    "result_summary": str(feature["result_summary"] or ""),
-                    "priority": str(feature["priority"] or ""),
-                    "avoid": str(feature["avoid"] or ""),
-                    "car_type": self._safe_number(feature["car_type"]),
-                    "car_fuel": str(feature["car_fuel"] or ""),
-                    "car_hipass": bool(self._safe_number(feature["car_hipass"])),
-                }
-            )
-
-        items.sort(key=lambda item: item["searched_at"], reverse=True)
-        return {
-            "selected_history_id": selected_history_id or "",
-            "items": items,
-        }
+        return self.history_ui.payload(selected_history_id)
 
     def _focus_route_history(self, history_id):
-        if not history_id or self.route_history_layer is None:
-            return
+        self.history_ui.focus(history_id)
 
-        route_feature = self._route_feature_for_history(history_id)
-        if route_feature is None:
-            return
-
-        self.route_history_layer.removeSelection()
-        self.route_history_layer.selectByIds([route_feature.id()])
-
-        guide_features = self._guidance_features_for_history(history_id)
-        if self.guidance_history_layer is not None:
-            self.guidance_history_layer.removeSelection()
-            self.guidance_history_layer.selectByIds(
-                [feature.id() for feature in guide_features]
-            )
-
+    def _show_route_history(self, route_feature, guide_features, history_id):
         guidance_payload = self._route_guidance_payload_from_history(
             route_feature,
             guide_features,
@@ -1342,16 +1317,11 @@ class KakaoQgisBridgePlugin:
             self.external_bridge_server.set_center(center.x(), center.y())
         self._set_route_guidance(guidance_payload)
         self._sync_route_history_panel(history_id)
-        self.iface.messageBar().pushInfo(
-            "Kakao QGIS Bridge",
-            f"경로 이력 선택: {route_feature['result_summary']}",
-        )
 
     def _load_route_history(self, history_id):
-        route_feature = self._route_feature_for_history(history_id)
-        if route_feature is None:
-            return
+        self.history_ui.load_input(history_id)
 
+    def _send_route_history_input(self, route_feature):
         payload = self._route_input_payload_from_history(route_feature)
         if self.dock is not None and self.dock.web_view is not None:
             script = "window.loadRouteHistoryInput({payload});".format(
@@ -1363,80 +1333,12 @@ class KakaoQgisBridgePlugin:
                 "loadRouteHistoryInput",
                 json.dumps(payload, ensure_ascii=False),
             )
-        self.iface.messageBar().pushInfo(
-            "Kakao QGIS Bridge",
-            "선택한 이력을 경로 입력창으로 불러왔습니다.",
-        )
 
     def _delete_route_history(self, history_id):
-        epoch = self._project_epoch
-        route_feature = self._route_feature_for_history(history_id)
-        if route_feature is None:
-            return
-
-        answer = QMessageBox.question(
-            self.iface.mainWindow(),
-            "Kakao QGIS Bridge",
-            (
-                "선택한 경로 이력을 삭제할까요?\n\n"
-                f"{route_feature['origin_name']} → "
-                f"{route_feature['destination_name']}"
-            ),
-            MSGBOX_YES | MSGBOX_NO,
-            MSGBOX_NO,
-        )
-        if answer != MSGBOX_YES or epoch != self._project_epoch:
-            return
-
-        was_active_history = history_id == self.active_route_history_id
-
-        try:
-            self.history_repository.delete_history(history_id)
-        except HistoryOperationError as exc:
-            self._handle_history_operation_error(exc)
-            return
-
-        if was_active_history:
-            self._clear_current_route_display()
-
-        self._sync_route_history_panel()
-        self._update_history_action_state()
-        self.iface.messageBar().pushInfo(
-            "Kakao QGIS Bridge",
-            "선택한 경로 이력을 삭제했습니다.",
-        )
+        self.history_ui.delete(history_id)
 
     def _delete_all_route_histories(self):
-        epoch = self._project_epoch
-        if (
-            self.route_history_layer is None
-            or self.route_history_layer.featureCount() == 0
-        ):
-            return
-
-        answer = QMessageBox.question(
-            self.iface.mainWindow(),
-            "Kakao QGIS Bridge",
-            "현재 세션의 모든 경로 이력을 삭제할까요?",
-            MSGBOX_YES | MSGBOX_NO,
-            MSGBOX_NO,
-        )
-        if answer != MSGBOX_YES or epoch != self._project_epoch:
-            return
-
-        try:
-            self.history_repository.delete_all()
-        except HistoryOperationError as exc:
-            self._handle_history_operation_error(exc)
-            return
-
-        self._clear_current_route_display()
-        self._sync_route_history_panel()
-        self._update_history_action_state()
-        self.iface.messageBar().pushInfo(
-            "Kakao QGIS Bridge",
-            "전체 경로 이력을 삭제했습니다.",
-        )
+        self.history_ui.delete_all()
 
     def _history_export_service(self):
         return HistoryExportService(
@@ -1446,213 +1348,13 @@ class KakaoQgisBridgePlugin:
         )
 
     def _export_single_route_history(self, history_id):
-        route_feature = self._route_feature_for_history(history_id)
-        if route_feature is None:
-            return
-
-        self._export_route_histories(
-            [history_id],
-            self._history_export_basename(route_feature),
-            "선택 경로 이력 내보내기",
-            "선택 이력 내보내기",
-        )
+        return self.history_export_ui._export_single_route_history(history_id)
 
     def _export_selected_route_histories(self, history_ids_json):
-        try:
-            history_ids = json.loads(history_ids_json or "[]")
-        except (TypeError, ValueError, json.JSONDecodeError):
-            history_ids = []
+        return self.history_export_ui._export_selected_route_histories(history_ids_json)
 
-        history_ids = [
-            str(history_id)
-            for history_id in history_ids
-            if str(history_id).strip()
-        ]
-        if not history_ids:
-            self.iface.messageBar().pushWarning(
-                "Kakao QGIS Bridge",
-                "내보낼 경로 이력을 선택하세요.",
-            )
-            return
-
-        self._export_route_histories(
-            history_ids,
-            self._selected_history_export_basename(len(history_ids)),
-            "선택 경로 이력 다수 내보내기",
-            "선택 이력 다수 내보내기",
-        )
-
-    def _export_route_histories(
-        self,
-        history_ids,
-        base_name,
-        dialog_title,
-        success_label,
-    ):
-        if self.route_history_layer is None:
-            return
-
-        unique_history_ids = []
-        seen_history_ids = set()
-        for history_id in history_ids:
-            if history_id in seen_history_ids:
-                continue
-            seen_history_ids.add(history_id)
-            unique_history_ids.append(history_id)
-
-        route_features = []
-        guidance_features = []
-        for history_id in unique_history_ids:
-            route_feature = self._route_feature_for_history(history_id)
-            if route_feature is None:
-                continue
-            route_features.append(QgsFeature(route_feature))
-            guidance_features.extend(
-                self._guidance_features_for_history(history_id)
-            )
-
-        if not route_features:
-            self.iface.messageBar().pushWarning(
-                "Kakao QGIS Bridge",
-                "내보낼 수 있는 경로 이력이 없습니다.",
-            )
-            return
-
-        formats = [
-            "GeoPackage (*.gpkg)",
-            "GeoJSON (*.geojson)",
-            "Shapefile (*.shp)",
-            "GPX (*.gpx)",
-        ]
-        selected_format, accepted = QInputDialog.getItem(
-            self.iface.mainWindow(),
-            "Kakao QGIS Bridge",
-            "선택한 경로 이력을 내보낼 형식",
-            formats,
-            0,
-            False,
-        )
-        if not accepted:
-            return
-
-        project_home = QgsProject.instance().homePath()
-        extension = {
-            formats[0]: ".gpkg",
-            formats[1]: ".geojson",
-            formats[2]: ".shp",
-            formats[3]: ".gpx",
-        }[selected_format]
-        default_name = f"{base_name}{extension}"
-        default_path = (
-            str(Path(project_home) / default_name)
-            if project_home
-            else default_name
-        )
-        epoch = self._project_epoch
-        filename, _selected_filter = QFileDialog.getSaveFileName(
-            self.iface.mainWindow(),
-            dialog_title,
-            default_path,
-            selected_format,
-        )
-        if not filename or epoch != self._project_epoch:
-            return
-
-        route_layer = self._single_history_layer(
-            self.route_history_layer,
-            route_features,
-            "LineString",
-            "Selected Kakao Route History",
-        )
-        guidance_layer = self._single_history_layer(
-            self.guidance_history_layer,
-            guidance_features,
-            "Point",
-            "Selected Kakao Guidance History",
-        )
-
-        shapefile_warning = ""
-        try:
-            if selected_format == formats[0]:
-                output_path = Path(filename)
-                if output_path.suffix.lower() != ".gpkg":
-                    output_path = output_path.with_suffix(".gpkg")
-                route_count = self._write_history_layer(
-                    route_layer,
-                    output_path,
-                    ROUTE_HISTORY_LAYER_NAME,
-                    "LineString",
-                )
-                guidance_count = self._write_history_layer(
-                    guidance_layer,
-                    output_path,
-                    GUIDANCE_HISTORY_LAYER_NAME,
-                    "Point",
-                )
-                output_parent = output_path.parent
-            elif selected_format == formats[1]:
-                route_path, guidance_path = self._geojson_output_paths(filename)
-                route_count = self._write_geojson_history_layer(
-                    route_layer,
-                    route_path,
-                    "Kakao Route History",
-                )
-                guidance_count = self._write_geojson_history_layer(
-                    guidance_layer,
-                    guidance_path,
-                    "Kakao Guidance History",
-                )
-                output_parent = route_path.parent
-            elif selected_format == formats[2]:
-                shapefile_warning = self._shapefile_loss_warning(route_layer, guidance_layer)
-                route_path, guidance_path = self._paired_output_paths(
-                    filename,
-                    ".shp",
-                )
-                route_count = self._write_shapefile_history_layer(
-                    route_layer,
-                    route_path,
-                    "LineString",
-                    "Kakao Route History",
-                    self._route_shapefile_fields(),
-                )
-                guidance_count = self._write_shapefile_history_layer(
-                    guidance_layer,
-                    guidance_path,
-                    "Point",
-                    "Kakao Guidance History",
-                    self._guidance_shapefile_fields(),
-                )
-                output_parent = route_path.parent
-            else:
-                output_path = Path(filename)
-                if output_path.suffix.lower() != ".gpx":
-                    output_path = output_path.with_suffix(".gpx")
-                route_count, guidance_count = self._write_gpx_history(
-                    route_layer,
-                    guidance_layer,
-                    output_path,
-                )
-                output_parent = output_path.parent
-        except RuntimeError as exc:
-            QgsMessageLog.logMessage(
-                str(exc),
-                LOG_TAG,
-                MSG_CRITICAL,
-            )
-            QMessageBox.critical(
-                self.iface.mainWindow(),
-                "Kakao QGIS Bridge",
-                f"{dialog_title}에 실패했습니다.\n\n{exc}",
-            )
-            return
-
-        message = (f"{success_label} 완료: 경로 {route_count}건, "
-                   f"안내 {guidance_count}건 ({output_parent})")
-        if shapefile_warning:
-            self.iface.messageBar().pushWarning("Kakao QGIS Bridge", message + " " + shapefile_warning)
-        else:
-            self.iface.messageBar().pushSuccess("Kakao QGIS Bridge", message)
+    def _export_route_histories(self, history_ids, base_name, dialog_title, success_label):
+        return self.history_export_ui._export_route_histories(history_ids, base_name, dialog_title, success_label)
 
     def _update_history_action_state(self):
         has_history = (
@@ -1718,45 +1420,15 @@ class KakaoQgisBridgePlugin:
 
     @staticmethod
     def _single_history_layer(source_layer, features, geometry_name, layer_name):
-        layer = QgsVectorLayer(
-            f"{geometry_name}?crs={source_layer.crs().authid()}",
-            layer_name,
-            "memory",
-        )
-        provider = layer.dataProvider()
-        provider.addAttributes(list(source_layer.fields()))
-        layer.updateFields()
-        copied_features = []
-        for source_feature in features:
-            feature = QgsFeature(layer.fields())
-            feature.setGeometry(source_feature.geometry())
-            feature.setAttributes(source_feature.attributes())
-            copied_features.append(feature)
-        if copied_features:
-            provider.addFeatures(copied_features)
-            layer.updateExtents()
-        layer.setRenderer(source_layer.renderer().clone())
-        return layer
+        return HistoryExportController._single_history_layer(source_layer, features, geometry_name, layer_name)
 
     @staticmethod
     def _history_export_basename(route_feature):
-        searched = str(route_feature["searched_at"] or "")
-        date_part = searched[:10].replace("-", "") or datetime.now().strftime("%Y%m%d")
-        origin = str(route_feature["origin_name"] or "origin").strip()
-        destination = str(route_feature["destination_name"] or "destination").strip()
-        raw_name = f"kakao_route_{date_part}_{origin}_to_{destination}"
-        safe = "".join(
-            character if character.isalnum() or character in ("-", "_") else "_"
-            for character in raw_name
-        )
-        while "__" in safe:
-            safe = safe.replace("__", "_")
-        return safe[:120].strip("_") or f"kakao_route_{date_part}"
+        return HistoryExportController._history_export_basename(route_feature)
 
     @staticmethod
     def _selected_history_export_basename(history_count):
-        date_part = datetime.now().strftime("%Y%m%d")
-        return f"kakao_routes_{date_part}_selected_{history_count}"
+        return HistoryExportController._selected_history_export_basename(history_count)
 
     def _route_guidance_payload_from_history(self, route_feature, guide_features):
         vehicle = {
@@ -1911,311 +1583,16 @@ class KakaoQgisBridgePlugin:
         return history_values.safe_float(value)
 
     def _save_route_history_geopackage(self, _checked=False):
-        if (
-            self.route_history_layer is None
-            or self.route_history_layer.featureCount() == 0
-        ):
-            QMessageBox.information(
-                self.iface.mainWindow(),
-                "Kakao QGIS Bridge",
-                "저장할 경로 검색 이력이 없습니다. 경로를 먼저 생성해 주세요.",
-            )
-            return
-
-        project_home = QgsProject.instance().homePath()
-        default_name = f"kakao_route_history_{datetime.now():%Y%m%d}.gpkg"
-        default_path = (
-            str(Path(project_home) / default_name)
-            if project_home
-            else default_name
-        )
-        epoch = self._project_epoch
-        filename, _selected_filter = QFileDialog.getSaveFileName(
-            self.iface.mainWindow(),
-            "경로 이력 GeoPackage 저장",
-            default_path,
-            "GeoPackage (*.gpkg)",
-        )
-        if not filename or epoch != self._project_epoch:
-            return
-
-        output_path = Path(filename)
-        if output_path.suffix.lower() != ".gpkg":
-            output_path = output_path.with_suffix(".gpkg")
-
-        try:
-            route_count = self._write_history_layer(
-                self.route_history_layer,
-                output_path,
-                ROUTE_HISTORY_LAYER_NAME,
-                "LineString",
-            )
-            guidance_count = self._write_history_layer(
-                self.guidance_history_layer,
-                output_path,
-                GUIDANCE_HISTORY_LAYER_NAME,
-                "Point",
-            )
-        except RuntimeError as exc:
-            QgsMessageLog.logMessage(
-                str(exc),
-                LOG_TAG,
-                MSG_CRITICAL,
-            )
-            QMessageBox.critical(
-                self.iface.mainWindow(),
-                "Kakao QGIS Bridge",
-                f"GeoPackage 저장에 실패했습니다.\n\n{exc}",
-            )
-            return
-
-        if route_count == 0 and guidance_count == 0:
-            message = "선택한 GeoPackage에 현재 세션 이력이 이미 저장되어 있습니다."
-        else:
-            message = (
-                f"GeoPackage 저장 완료: 경로 {route_count}건, "
-                f"안내 {guidance_count}건"
-            )
-        message = f"{message} ({output_path})"
-        self.iface.messageBar().pushSuccess("Kakao QGIS Bridge", message)
+        return self.history_export_ui._save_route_history_geopackage(_checked)
 
     def _export_route_history_geojson(self, _checked=False):
-        if (
-            self.route_history_layer is None
-            or self.route_history_layer.featureCount() == 0
-        ):
-            QMessageBox.information(
-                self.iface.mainWindow(),
-                "Kakao QGIS Bridge",
-                "내보낼 경로 검색 이력이 없습니다. 경로를 먼저 생성해 주세요.",
-            )
-            return
-
-        project_home = QgsProject.instance().homePath()
-        default_name = f"kakao_route_history_{datetime.now():%Y%m%d}.geojson"
-        default_path = (
-            str(Path(project_home) / default_name)
-            if project_home
-            else default_name
-        )
-        epoch = self._project_epoch
-        filename, _selected_filter = QFileDialog.getSaveFileName(
-            self.iface.mainWindow(),
-            "경로·안내 이력 GeoJSON 내보내기",
-            default_path,
-            "GeoJSON (*.geojson)",
-        )
-        if not filename or epoch != self._project_epoch:
-            return
-
-        route_path, guidance_path = self._geojson_output_paths(filename)
-        output_paths = [
-            route_path,
-            guidance_path,
-            route_path.with_suffix(".qml"),
-            guidance_path.with_suffix(".qml"),
-        ]
-        existing_paths = [path for path in output_paths if path.exists()]
-        if existing_paths:
-            filenames = "\n".join(path.name for path in existing_paths)
-            answer = QMessageBox.question(
-                self.iface.mainWindow(),
-                "Kakao QGIS Bridge",
-                "다음 파일을 덮어쓸까요?\n\n" + filenames,
-                MSGBOX_YES
-                | MSGBOX_NO,
-                MSGBOX_NO,
-            )
-            if answer != MSGBOX_YES:
-                return
-
-        try:
-            route_count = self._write_geojson_history_layer(
-                self.route_history_layer,
-                route_path,
-                "Kakao Route History",
-            )
-            guidance_count = self._write_geojson_history_layer(
-                self.guidance_history_layer,
-                guidance_path,
-                "Kakao Guidance History",
-            )
-        except RuntimeError as exc:
-            QgsMessageLog.logMessage(
-                str(exc),
-                LOG_TAG,
-                MSG_CRITICAL,
-            )
-            QMessageBox.critical(
-                self.iface.mainWindow(),
-                "Kakao QGIS Bridge",
-                f"GeoJSON 내보내기에 실패했습니다.\n\n{exc}",
-            )
-            return
-
-        message = (
-            f"GeoJSON 내보내기 완료: 경로 {route_count}건, "
-            f"안내 {guidance_count}건 ({route_path.parent})"
-        )
-        self.iface.messageBar().pushSuccess("Kakao QGIS Bridge", message)
+        return self.history_export_ui._export_route_history_geojson(_checked)
 
     def _export_route_history_shapefile(self, _checked=False):
-        if (
-            self.route_history_layer is None
-            or self.route_history_layer.featureCount() == 0
-        ):
-            QMessageBox.information(
-                self.iface.mainWindow(),
-                "Kakao QGIS Bridge",
-                "내보낼 경로 검색 이력이 없습니다. 경로를 먼저 생성해 주세요.",
-            )
-            return
-
-        project_home = QgsProject.instance().homePath()
-        default_name = f"kakao_route_history_{datetime.now():%Y%m%d}.shp"
-        default_path = (
-            str(Path(project_home) / default_name)
-            if project_home
-            else default_name
-        )
-        epoch = self._project_epoch
-        filename, _selected_filter = QFileDialog.getSaveFileName(
-            self.iface.mainWindow(),
-            "경로·안내 이력 Shapefile 내보내기",
-            default_path,
-            "Shapefile (*.shp)",
-        )
-        if not filename or epoch != self._project_epoch:
-            return
-
-        route_path, guidance_path = self._paired_output_paths(
-            filename,
-            ".shp",
-        )
-        output_paths = self._shapefile_sidecar_paths(route_path)
-        output_paths.extend(self._shapefile_sidecar_paths(guidance_path))
-        existing_paths = [path for path in output_paths if path.exists()]
-        if existing_paths:
-            filenames = "\n".join(path.name for path in existing_paths)
-            answer = QMessageBox.question(
-                self.iface.mainWindow(),
-                "Kakao QGIS Bridge",
-                "다음 파일을 덮어쓸까요?\n\n" + filenames,
-                MSGBOX_YES
-                | MSGBOX_NO,
-                MSGBOX_NO,
-            )
-            if answer != MSGBOX_YES:
-                return
-
-        try:
-            shapefile_warning = self._shapefile_loss_warning(
-                self.route_history_layer, self.guidance_history_layer,
-            )
-            route_count = self._write_shapefile_history_layer(
-                self.route_history_layer,
-                route_path,
-                "LineString",
-                "Kakao Route History",
-                self._route_shapefile_fields(),
-            )
-            guidance_count = self._write_shapefile_history_layer(
-                self.guidance_history_layer,
-                guidance_path,
-                "Point",
-                "Kakao Guidance History",
-                self._guidance_shapefile_fields(),
-            )
-        except RuntimeError as exc:
-            QgsMessageLog.logMessage(
-                str(exc),
-                LOG_TAG,
-                MSG_CRITICAL,
-            )
-            QMessageBox.critical(
-                self.iface.mainWindow(),
-                "Kakao QGIS Bridge",
-                f"Shapefile 내보내기에 실패했습니다.\n\n{exc}",
-            )
-            return
-
-        message = (
-            f"Shapefile 내보내기 완료: 경로 {route_count}건, "
-            f"안내 {guidance_count}건 ({route_path.parent})"
-        )
-        if shapefile_warning:
-            self.iface.messageBar().pushWarning("Kakao QGIS Bridge", message + " " + shapefile_warning)
-        else:
-            self.iface.messageBar().pushSuccess("Kakao QGIS Bridge", message)
+        return self.history_export_ui._export_route_history_shapefile(_checked)
 
     def _export_route_history_gpx(self, _checked=False):
-        if (
-            self.route_history_layer is None
-            or self.route_history_layer.featureCount() == 0
-        ):
-            QMessageBox.information(
-                self.iface.mainWindow(),
-                "Kakao QGIS Bridge",
-                "내보낼 경로 검색 이력이 없습니다. 경로를 먼저 생성해 주세요.",
-            )
-            return
-
-        project_home = QgsProject.instance().homePath()
-        default_name = f"kakao_route_history_{datetime.now():%Y%m%d}.gpx"
-        default_path = (
-            str(Path(project_home) / default_name)
-            if project_home
-            else default_name
-        )
-        epoch = self._project_epoch
-        filename, _selected_filter = QFileDialog.getSaveFileName(
-            self.iface.mainWindow(),
-            "경로·안내 이력 GPX 내보내기",
-            default_path,
-            "GPX (*.gpx)",
-        )
-        if not filename or epoch != self._project_epoch:
-            return
-
-        output_path = Path(filename)
-        if output_path.suffix.lower() != ".gpx":
-            output_path = output_path.with_suffix(".gpx")
-        if output_path.exists():
-            answer = QMessageBox.question(
-                self.iface.mainWindow(),
-                "Kakao QGIS Bridge",
-                f"{output_path.name} 파일을 덮어쓸까요?",
-                MSGBOX_YES
-                | MSGBOX_NO,
-                MSGBOX_NO,
-            )
-            if answer != MSGBOX_YES:
-                return
-
-        try:
-            route_count, guidance_count = self._write_gpx_history(
-                self.route_history_layer,
-                self.guidance_history_layer,
-                output_path,
-            )
-        except RuntimeError as exc:
-            QgsMessageLog.logMessage(
-                str(exc),
-                LOG_TAG,
-                MSG_CRITICAL,
-            )
-            QMessageBox.critical(
-                self.iface.mainWindow(),
-                "Kakao QGIS Bridge",
-                f"GPX 내보내기에 실패했습니다.\n\n{exc}",
-            )
-            return
-
-        message = (
-            f"GPX 내보내기 완료: 경로 {route_count}건, "
-            f"안내 {guidance_count}건 ({output_path.parent})"
-        )
-        self.iface.messageBar().pushSuccess("Kakao QGIS Bridge", message)
+        return self.history_export_ui._export_route_history_gpx(_checked)
 
     @staticmethod
     def _geojson_output_paths(filename):
@@ -2231,21 +1608,7 @@ class KakaoQgisBridgePlugin:
         )
 
     def _shapefile_loss_warning(self, routes, guides):
-        affected = []
-        for label, layer, specs in (
-            ("경로", routes, self._route_shapefile_fields()),
-            ("안내", guides, self._guidance_shapefile_fields()),
-        ):
-            if layer is None:
-                continue
-            counts = HistoryExportService.shapefile_loss_counts(layer, specs)
-            affected.extend(f"{label} {field} {count}건" for field, count in counts.items())
-        if not affected:
-            return ""
-        message = ("SHP 문자열 제한으로 일부 속성이 잘립니다. "
-                   "경유지 등 전체 속성을 보존하려면 GeoPackage 또는 GeoJSON을 사용하세요.")
-        QgsMessageLog.logMessage(message + "\n" + ", ".join(affected), LOG_TAG, MSG_WARNING)
-        return message
+        return self.history_export_ui._shapefile_loss_warning(routes, guides)
 
     def _write_shapefile_history_layer(
         self, source_layer, output_path, geometry_name, layer_name, field_specs,

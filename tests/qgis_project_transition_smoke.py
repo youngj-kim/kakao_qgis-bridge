@@ -149,6 +149,37 @@ try:
              patch.object(plugin.history_import_service, 'import_file') as importer:
             plugin._load_route_history_file()
             importer.assert_not_called()
+        # Export UI checks the same real project boundary after every modal.
+        def switch_in_format(*_args):
+            project.clear()
+            return "GPX (*.gpx)", True
+        with patch('kakao_qgis_bridge.plugin.QInputDialog.getItem', side_effect=switch_in_format), \
+             patch('kakao_qgis_bridge.plugin.QFileDialog.getSaveFileName') as save, \
+             patch.object(plugin, '_write_gpx_history') as writer:
+            plugin._export_single_route_history(hid)
+            save.assert_not_called()
+            writer.assert_not_called()
+        exports = (
+            (plugin._save_route_history_geopackage, '_write_history_layer'),
+            (plugin._export_route_history_geojson, '_write_geojson_history_layer'),
+            (plugin._export_route_history_shapefile, '_write_shapefile_history_layer'),
+            (plugin._export_route_history_gpx, '_write_gpx_history'),
+        )
+        for export, writer_name in exports:
+            with patch('kakao_qgis_bridge.plugin.QFileDialog.getSaveFileName',
+                       side_effect=switch_in_file_dialog), \
+                 patch.object(plugin, writer_name) as writer:
+                export()
+                writer.assert_not_called()
+        for export, writer_name in exports[1:]:
+            with patch('kakao_qgis_bridge.plugin.QFileDialog.getSaveFileName',
+                       return_value=(str(fixture.with_suffix('.gpx')), '')), \
+                 patch('pathlib.Path.exists', return_value=True), \
+                 patch('kakao_qgis_bridge.plugin.QMessageBox.question',
+                       side_effect=switch_in_question), \
+                 patch.object(plugin, writer_name) as writer:
+                export()
+                writer.assert_not_called()
         before_epoch = plugin._project_epoch
         plugin.unload()
         project.clear()

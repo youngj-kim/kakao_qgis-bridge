@@ -190,6 +190,57 @@ def run(root):
                 require(len(plugin.iface.messages.success) == count, "failure reported success")
             checks.append("UI cancellation and writer failure")
 
+            # A modal dialog must not resume an export across a project boundary.
+            from kakao_qgis_bridge.compat import MSGBOX_YES, MSGBOX_NO
+
+            def transition_result(result):
+                plugin._project_epoch += 1
+                return result
+
+            count = len(plugin.iface.messages.success)
+            with patch("kakao_qgis_bridge.plugin.QInputDialog.getItem",
+                       side_effect=lambda *args: transition_result(("GPX (*.gpx)", True))), \
+                 patch("kakao_qgis_bridge.plugin.QFileDialog.getSaveFileName") as dialog, \
+                 patch.object(plugin, "_write_gpx_history") as writer:
+                plugin._export_single_route_history("history-1")
+                require(not dialog.called and not writer.called, "format transition resumed export")
+
+            full_exports = (
+                (plugin._save_route_history_geopackage, "_write_history_layer", ".gpkg"),
+                (plugin._export_route_history_geojson, "_write_geojson_history_layer", ".geojson"),
+                (plugin._export_route_history_shapefile, "_write_shapefile_history_layer", ".shp"),
+                (plugin._export_route_history_gpx, "_write_gpx_history", ".gpx"),
+            )
+            for export, writer_name, extension in full_exports:
+                target = output / ("boundary" + extension)
+                with patch("kakao_qgis_bridge.plugin.QFileDialog.getSaveFileName",
+                           side_effect=lambda *args: transition_result((str(target), ""))), \
+                     patch.object(plugin, writer_name) as writer:
+                    export()
+                    require(not writer.called, "save transition resumed " + extension)
+
+            for export, writer_name, extension in full_exports[1:]:
+                target = output / ("overwrite" + extension)
+                existing = (plugin._paired_output_paths(target, extension)[0]
+                            if extension != ".gpx" else target)
+                existing.write_bytes(b"existing-output")
+                for answer, transition in ((MSGBOX_NO, False), (MSGBOX_YES, True)):
+                    with patch("kakao_qgis_bridge.plugin.QFileDialog.getSaveFileName",
+                               return_value=(str(target), "")), \
+                         patch("kakao_qgis_bridge.plugin.QMessageBox.question",
+                               side_effect=lambda *args: transition_result(answer) if transition else answer), \
+                         patch.object(plugin, writer_name) as writer:
+                        export()
+                        require(not writer.called, "overwrite denial/transition resumed " + extension)
+                        require(existing.read_bytes() == b"existing-output", "existing file changed")
+            require(len(plugin.iface.messages.success) == count, "boundary cancellation reported success")
+
+            with patch("kakao_qgis_bridge.plugin.QInputDialog.getItem") as dialog:
+                for invalid in ('{"history_id": "history-1"}', '"history-1"', '123', 'null', 'broken'):
+                    plugin._export_selected_route_histories(invalid)
+                require(not dialog.called, "invalid selection reached export dialog")
+            checks.append("UI project boundaries: format, four saves, three overwrite prompts; invalid selections")
+
             # UTF-8 may exceed the DBF limit before reaching 254 characters.
             feature = next(routes.getFeatures())
             long_name = "한" * 100

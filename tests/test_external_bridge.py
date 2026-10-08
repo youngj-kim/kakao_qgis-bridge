@@ -68,6 +68,9 @@ class ExternalBridgeServerTest(unittest.TestCase):
         self.assertIn("test-javascript-key", document)
         self.assertIn(self.token, document)
         self.assertIn("encodeURIComponent(bridgeToken)", document)
+        for name in ("Search", "Guidance", "History", "RouteInput"):
+            self.assertIn("window.createKakao" + name + "Controller", document)
+        self.assertNotIn("__VIEWER_", document)
 
     def test_api_rejects_unauthorized_and_unknown_requests(self):
         with self.assertRaises(HTTPError) as error:

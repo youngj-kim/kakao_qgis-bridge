@@ -1063,6 +1063,18 @@
   </main>
 
   <script>
+__VIEWER_SEARCH_SCRIPT__
+  </script>
+  <script>
+__VIEWER_GUIDANCE_SCRIPT__
+  </script>
+  <script>
+__VIEWER_HISTORY_SCRIPT__
+  </script>
+  <script>
+__VIEWER_ROUTE_INPUT_SCRIPT__
+  </script>
+  <script>
     const kakaoAppKey = __KAKAO_APP_KEY_JSON__;
     const defaultCenter = { lat: 37.566826, lon: 126.9786567 };
     const searchForm = document.getElementById("search-form");
@@ -1119,21 +1131,7 @@
     let geocoderService = null;
     let pendingCenter = null;
     let moveRequestId = 0;
-    let searchRequestId = 0;
-    let routeOrigin = null;
-    let routeDestination = null;
-    const routeWaypoints = [];
-    let nextWaypointId = 1;
-    let routeBusy = false;
     let lastProjectEpoch = null;
-    let routeSearchTimer = null;
-    let routeGuidance = [];
-    let latestRouteGuidancePayload = null;
-    let routeHistory = [];
-    let routePolyline = null;
-    let selectedRouteHistoryIds = new Set();
-    let activeGuidanceSequence = null;
-    let activeRouteHistoryId = "";
     let activeRoutePanelTab = "guidance";
     let qgisBridge = null;
     let mapSyncTimer = null;
@@ -1142,6 +1140,38 @@
     let stableRelayoutTimers = [];
     let lastRoadviewSize = "";
     let programmaticRoadviewPanoId = null;
+    const guidanceController = window.createKakaoGuidanceController({
+      document, routeGuidanceList, routeGuidanceSummaryText, routeGuidanceOverview,
+      routeGuidancePanel, routeGuidanceToggle,
+      getMap: () => map, getMaps: () => kakao.maps, getBridge: () => qgisBridge,
+      getActiveTab: () => activeRoutePanelTab, moveViewer, setStatus, formatCoordinate,
+      activateRoutePanelTab, updateRoutePanelVisibility, scheduleStableRelayout
+    });
+    const historyController = window.createKakaoHistoryController({
+      document, routeHistoryList, getBridge: () => qgisBridge,
+      getActiveTab: () => activeRoutePanelTab, setStatus, renderRouteGuidance,
+      formatGuidanceDistance, formatGuidanceDuration, activateRoutePanelTab,
+      updateRouteControls, updateRoutePanelVisibility, scheduleStableRelayout
+    });
+    const searchController = window.createKakaoSearchController({
+      document, searchForm, searchQuery, searchSubmit, searchClear, searchResults,
+      getServices: () => ({
+        placesService, geocoderService,
+        status: placesService ? kakao.maps.services.Status : {}
+      }),
+      setStatus, selectSearchResult
+    });
+    const routeInputController = window.createKakaoRouteInputController({
+      document, ui: { routeOriginInput, routeDestinationInput, routeOriginCurrentButton, routeDestinationCurrentButton, routePrioritySelect, routeAvoidToggle, routeAvoidOptions, routeAvoidCheckboxes, routeVehicleToggle, routeVehicleOptions, routeCarType, routeCarFuel, routeCarHipass, routeAddWaypointButton, routeWaypointsContainer, routeCreateButton, routeHistoryOpenButton, routeSwapButton, routeResetButton, searchResults }, maxRouteWaypoints,
+      getMap: () => map, getBridge: () => qgisBridge,
+      getServices: () => ({
+        placesService, geocoderService,
+        status: placesService ? kakao.maps.services.Status : {}
+      }),
+      search: (...args) => searchController.search(...args),
+      cancelSearch: () => searchController.cancel(), timers: window,
+      moveViewer, setStatus, formatCoordinate, routeInputLabel, clearRoutePath
+    });
     const viewerLayoutStorageKey = "kakao-qgis-viewer-layout";
     const viewerSplitStorageKey = "kakao-qgis-viewer-split";
 
@@ -1263,99 +1293,17 @@
     }
 
     function formatGuidanceDistance(distance) {
-      if (!Number.isFinite(distance) || distance <= 0) {
-        return "";
-      }
-      if (distance < 1000) {
-        return `${Math.round(distance)} m`;
-      }
-      return `${(distance / 1000).toFixed(1)} km`;
+      return guidanceController.formatDistance(distance);
     }
 
     function formatGuidanceDuration(duration) {
-      if (!Number.isFinite(duration) || duration <= 0) {
-        return "";
-      }
-      if (duration < 60) {
-        return `${Math.round(duration)}초`;
-      }
-      return `${Math.max(1, Math.round(duration / 60))}분`;
-    }
-
-    function selectedRouteAvoidOptions() {
-      return routeAvoidCheckboxes
-        .filter((checkbox) => checkbox.checked)
-        .map((checkbox) => checkbox.value);
-    }
-
-    function updateRouteAvoidSummary() {
-      const selected = routeAvoidCheckboxes.filter((checkbox) => checkbox.checked);
-      routeAvoidToggle.textContent = `회피 ${selected.length}`;
-      const labels = selected.map((checkbox) => checkbox.parentElement.textContent.trim());
-      routeAvoidToggle.title = labels.length
-        ? `경로 회피: ${labels.join(", ")}`
-        : "경로 회피 옵션";
-    }
-
-    function selectedRouteVehicleOptions() {
-      return {
-        car_type: Number(routeCarType.value),
-        car_fuel: routeCarFuel.value,
-        car_hipass: routeCarHipass.checked
-      };
-    }
-
-    function updateRouteVehicleSummary() {
-      const typeLabel = routeCarType.options[routeCarType.selectedIndex].text;
-      const fuelLabel = routeCarFuel.options[routeCarFuel.selectedIndex].text;
-      const hipassLabel = routeCarHipass.checked ? ", 하이패스" : "";
-      routeVehicleToggle.title = `차량: ${typeLabel}, ${fuelLabel}${hipassLabel}`;
-    }
-
-    function guidanceIconText(category) {
-      const icons = {
-        start: "출",
-        destination: "도",
-        waypoint: "경",
-        straight: "↑",
-        left: "↰",
-        right: "↱",
-        uturn: "↶",
-        roundabout: "⟳",
-        transition: "↗",
-        other: "•"
-      };
-      return icons[category] || icons.other;
-    }
-
-    function routePriorityLabel(priority) {
-      const labels = {
-        RECOMMEND: "추천",
-        TIME: "최단 시간",
-        DISTANCE: "최단 거리"
-      };
-      return labels[priority] || priority || "";
-    }
-
-    function formatHistoryTime(value) {
-      if (!value) {
-        return "";
-      }
-      const date = new Date(value);
-      if (Number.isNaN(date.getTime())) {
-        return value;
-      }
-      const month = String(date.getMonth() + 1).padStart(2, "0");
-      const day = String(date.getDate()).padStart(2, "0");
-      const hour = String(date.getHours()).padStart(2, "0");
-      const minute = String(date.getMinutes()).padStart(2, "0");
-      return `${month}-${day} ${hour}:${minute}`;
+      return guidanceController.formatDuration(duration);
     }
 
     function updateRoutePanelVisibility() {
       routeGuidancePanel.hidden =
-        !routeGuidance.length &&
-        !routeHistory.length &&
+        !guidanceController.count &&
+        !historyController.count &&
         activeRoutePanelTab !== "history";
       updateSplitterState();
       scheduleStableRelayout();
@@ -1373,367 +1321,21 @@
       routeGuidanceList.hidden = showingHistory;
       routeHistoryList.hidden = !showingHistory;
       routeGuidanceSummaryText.textContent = showingHistory
-        ? `경로 이력 ${routeHistory.length}건`
+        ? `경로 이력 ${historyController.count}건`
         : routeGuidanceSummaryText.dataset.guidanceSummary || "";
       updateRoutePanelVisibility();
     }
 
-    function selectRouteHistory(history, item) {
-      activeRouteHistoryId = history.history_id || "";
-      routeHistoryList.querySelectorAll(".history-item").forEach((candidate) => {
-        candidate.classList.toggle("is-active", candidate === item);
-      });
-      if (qgisBridge && activeRouteHistoryId) {
-        qgisBridge.selectRouteHistory(activeRouteHistoryId);
-      }
-      setStatus(`${history.origin_name || "출발지"} → ${history.destination_name || "도착지"}`);
-    }
-
-    function selectedRouteHistoriesFromCurrentList() {
-      const availableIds = new Set(routeHistory.map((history) => history.history_id));
-      selectedRouteHistoryIds = new Set(
-        [...selectedRouteHistoryIds].filter((historyId) => availableIds.has(historyId))
-      );
-      return [...selectedRouteHistoryIds];
-    }
-
-    function createHistoryBulkActions() {
-      const selectedIds = selectedRouteHistoriesFromCurrentList();
-      const controls = document.createElement("div");
-      controls.className = "history-bulk-actions";
-
-      const summary = document.createElement("span");
-      summary.className = "history-bulk-summary";
-      summary.textContent = selectedIds.length
-        ? `선택 ${selectedIds.length}건`
-        : `경로 이력 ${routeHistory.length}건`;
-
-      const loadHistoryButton = document.createElement("button");
-      loadHistoryButton.type = "button";
-      loadHistoryButton.textContent = "이력 불러오기";
-      loadHistoryButton.addEventListener("click", () => {
-        if (!qgisBridge || typeof qgisBridge.loadRouteHistoryFile !== "function") {
-          setStatus("경로 이력 불러오기 기능을 사용할 수 없습니다.");
-          return;
-        }
-        qgisBridge.loadRouteHistoryFile();
-      });
-
-      const selectAllButton = document.createElement("button");
-      selectAllButton.type = "button";
-      selectAllButton.textContent = selectedIds.length === routeHistory.length && routeHistory.length
-        ? "전체 해제"
-        : "전체 선택";
-      selectAllButton.disabled = !routeHistory.length;
-      selectAllButton.addEventListener("click", () => {
-        if (selectedRouteHistoryIds.size === routeHistory.length) {
-          selectedRouteHistoryIds.clear();
-        } else {
-          selectedRouteHistoryIds = new Set(
-            routeHistory.map((history) => history.history_id).filter(Boolean)
-          );
-        }
-        renderRouteHistory({
-          selected_history_id: activeRouteHistoryId,
-          items: routeHistory
-        });
-      });
-
-      const deleteAllButton = document.createElement("button");
-      deleteAllButton.type = "button";
-      deleteAllButton.textContent = "전체 삭제";
-      deleteAllButton.disabled = !routeHistory.length;
-      deleteAllButton.addEventListener("click", () => {
-        if (!qgisBridge || typeof qgisBridge.deleteAllRouteHistories !== "function") {
-          setStatus("전체 이력 삭제 기능을 사용할 수 없습니다.");
-          return;
-        }
-        qgisBridge.deleteAllRouteHistories();
-      });
-
-      const exportSelectedButton = document.createElement("button");
-      exportSelectedButton.type = "button";
-      exportSelectedButton.textContent = "선택 저장";
-      exportSelectedButton.disabled = !selectedIds.length;
-      exportSelectedButton.addEventListener("click", () => {
-        const historyIds = selectedRouteHistoriesFromCurrentList();
-        if (!historyIds.length) {
-          setStatus("저장할 경로 이력을 선택하세요.");
-          return;
-        }
-        if (!qgisBridge || typeof qgisBridge.exportRouteHistories !== "function") {
-          setStatus("선택 이력 저장 기능을 사용할 수 없습니다.");
-          return;
-        }
-        qgisBridge.exportRouteHistories(JSON.stringify(historyIds));
-      });
-
-      controls.append(
-        summary,
-        loadHistoryButton,
-        selectAllButton,
-        deleteAllButton,
-        exportSelectedButton
-      );
-      return controls;
-    }
-
     function renderRouteHistory(payload) {
-      const items = Array.isArray(payload.items) ? payload.items : [];
-      const previousHistoryId = activeRouteHistoryId;
-      routeHistory = items;
-      const selectedHistoryId = payload.selected_history_id || activeRouteHistoryId || "";
-      const selectedExists = items.some((history) => history.history_id === selectedHistoryId);
-      activeRouteHistoryId = selectedExists ? selectedHistoryId : "";
-      routeHistoryList.textContent = "";
-
-      if (previousHistoryId && !activeRouteHistoryId) {
-        renderRouteGuidance({ history_id: "", summary: {}, path: [], guides: [] });
-      }
-
-      routeHistoryList.appendChild(createHistoryBulkActions());
-
-      if (!items.length) {
-        const empty = document.createElement("div");
-        empty.className = "history-empty";
-        empty.textContent = "아직 경로 이력이 없습니다.";
-        routeHistoryList.appendChild(empty);
-      }
-
-      items.forEach((history) => {
-        const item = document.createElement("div");
-        item.className = "history-item";
-        item.setAttribute("role", "option");
-        item.setAttribute("tabindex", "0");
-        if (history.history_id === activeRouteHistoryId) {
-          item.classList.add("is-active");
-        }
-
-        const checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.className = "history-select";
-        checkbox.title = "저장할 이력 선택";
-        checkbox.setAttribute("aria-label", "저장할 이력 선택");
-        checkbox.checked = selectedRouteHistoryIds.has(history.history_id);
-        checkbox.addEventListener("click", (event) => {
-          event.stopPropagation();
-        });
-        checkbox.addEventListener("change", () => {
-          if (checkbox.checked) {
-            selectedRouteHistoryIds.add(history.history_id);
-          } else {
-            selectedRouteHistoryIds.delete(history.history_id);
-          }
-          renderRouteHistory({
-            selected_history_id: activeRouteHistoryId,
-            items: routeHistory
-          });
-        });
-
-        const content = document.createElement("span");
-        content.className = "history-content";
-
-        const title = document.createElement("span");
-        title.className = "history-title";
-        title.textContent = `${history.origin_name || "출발지"} → ${history.destination_name || "도착지"}`;
-
-        const summary = document.createElement("span");
-        summary.className = "history-meta";
-        summary.textContent = history.result_summary || [
-          formatGuidanceDuration(Number(history.duration_s)),
-          formatGuidanceDistance(Number(history.distance_m)),
-          `안내 ${Number(history.guidance_count) || 0}개`
-        ].filter(Boolean).join(" · ");
-
-        const options = document.createElement("span");
-        options.className = "history-meta";
-        const optionParts = [
-          routePriorityLabel(history.priority),
-          history.avoid ? `회피 ${history.avoid.split("|").filter(Boolean).length}` : "",
-          formatHistoryTime(history.searched_at)
-        ].filter(Boolean);
-        options.textContent = optionParts.join(" · ");
-
-        const actions = document.createElement("span");
-        actions.className = "history-actions";
-        [
-          ["불러오기", "loadRouteHistory"],
-          ["삭제", "deleteRouteHistory"],
-          ["내보내기", "exportRouteHistory"]
-        ].forEach(([label, bridgeMethod]) => {
-          const button = document.createElement("button");
-          button.type = "button";
-          button.textContent = label;
-          button.addEventListener("click", (event) => {
-            event.stopPropagation();
-            if (qgisBridge && history.history_id) {
-              qgisBridge[bridgeMethod](history.history_id);
-            }
-          });
-          actions.appendChild(button);
-        });
-
-        content.append(title, summary, options, actions);
-        item.append(checkbox, content);
-        item.addEventListener("click", () => selectRouteHistory(history, item));
-        item.addEventListener("keydown", (event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            selectRouteHistory(history, item);
-          }
-        });
-        routeHistoryList.appendChild(item);
-      });
-
-      if (activeRoutePanelTab === "history") {
-        activateRoutePanelTab("history");
-      }
-      updateRouteControls();
-      updateRoutePanelVisibility();
-      scheduleStableRelayout();
-    }
-
-    function selectRouteGuidance(guide, item) {
-      activeGuidanceSequence = guide.sequence;
-      routeGuidanceList.querySelectorAll(".guidance-item").forEach((candidate) => {
-        candidate.classList.toggle("is-active", candidate === item);
-      });
-
-      moveViewer(guide.longitude, guide.latitude);
-      if (qgisBridge) {
-        qgisBridge.selectRouteGuidance(
-          guide.sequence,
-          guide.longitude,
-          guide.latitude
-        );
-      }
-      setStatus(`${guide.sequence}. ${guide.guidance}`);
+      return historyController.render(payload);
     }
 
     function clearRoutePath() {
-      if (routePolyline) {
-        routePolyline.setMap(null);
-        routePolyline = null;
-      }
-    }
-
-    function renderRoutePath(path) {
-      clearRoutePath();
-      if (!map || !Array.isArray(path) || path.length < 2) {
-        return;
-      }
-
-      const linePath = path
-        .map((point) => ({
-          lat: Number(point.lat),
-          lon: Number(point.lon)
-        }))
-        .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lon))
-        .map((point) => new kakao.maps.LatLng(point.lat, point.lon));
-
-      if (linePath.length < 2) {
-        return;
-      }
-
-      routePolyline = new kakao.maps.Polyline({
-        map,
-        path: linePath,
-        strokeWeight: 5,
-        strokeColor: "#1976d2",
-        strokeOpacity: 0.9,
-        strokeStyle: "solid"
-      });
-
-      const bounds = new kakao.maps.LatLngBounds();
-      linePath.forEach((point) => bounds.extend(point));
-      map.setBounds(bounds);
-      scheduleStableRelayout();
+      return guidanceController.clearPath();
     }
 
     function renderRouteGuidance(payload) {
-      const routePayload = payload || {};
-      latestRouteGuidancePayload = routePayload;
-      const guides = Array.isArray(routePayload.guides) ? routePayload.guides : [];
-      routeGuidance = guides;
-      activeGuidanceSequence = null;
-      routeGuidanceList.textContent = "";
-      renderRouteOverview(routePayload);
-      renderRoutePath(routePayload.path);
-
-      if (!guides.length) {
-        routeGuidanceSummaryText.dataset.guidanceSummary = "";
-        routeGuidanceOverview.textContent = "";
-        routeGuidanceOverview.hidden = true;
-        updateRoutePanelVisibility();
-        scheduleStableRelayout();
-        return;
-      }
-
-      const summary = routePayload.summary || {};
-      const vehicle = summary.vehicle || {};
-      const vehicleTypeLabels = {
-        1: "소형",
-        2: "중형",
-        3: "대형",
-        4: "대형 화물",
-        5: "특수 화물",
-        6: "경차",
-        7: "이륜차"
-      };
-      const summaryParts = [
-        formatGuidanceDuration(Number(summary.duration_s)),
-        formatGuidanceDistance(Number(summary.distance_m)),
-        Array.isArray(summary.avoid) && summary.avoid.length
-          ? `회피 ${summary.avoid.length}`
-          : "",
-        vehicleTypeLabels[vehicle.car_type] || "",
-        `안내 ${guides.length}개`
-      ].filter(Boolean);
-      routeGuidanceSummaryText.dataset.guidanceSummary = summaryParts.join(" · ");
-      routeGuidancePanel.dataset.collapsed = "false";
-      routeGuidanceToggle.textContent = "−";
-      routeGuidanceToggle.title = "경로 안내 접기";
-      routeGuidanceToggle.setAttribute("aria-label", "경로 안내 접기");
-
-      guides.forEach((guide) => {
-        const item = document.createElement("button");
-        item.type = "button";
-        item.className = "guidance-item";
-        item.setAttribute("role", "option");
-
-        const sequence = document.createElement("span");
-        sequence.className = "guidance-sequence";
-        sequence.textContent = String(guide.sequence);
-
-        const icon = document.createElement("span");
-        icon.className = `guidance-icon ${guide.category || "other"}`;
-        icon.textContent = guidanceIconText(guide.category);
-        icon.setAttribute("aria-hidden", "true");
-
-        const copy = document.createElement("span");
-        copy.className = "guidance-copy";
-
-        const title = document.createElement("span");
-        title.className = "guidance-title";
-        title.textContent = guide.guidance || guide.name || "경로 안내";
-
-        const meta = document.createElement("span");
-        meta.className = "guidance-meta";
-        const metaParts = [
-          formatGuidanceDistance(Number(guide.distance_m)),
-          formatGuidanceDuration(Number(guide.duration_s))
-        ].filter(Boolean);
-        meta.textContent = metaParts.length ? metaParts.join(" · ") : "현재 위치";
-
-        copy.append(title, meta);
-        item.append(sequence, icon, copy);
-        item.addEventListener("click", () => selectRouteGuidance(guide, item));
-        routeGuidanceList.appendChild(item);
-      });
-
-      activateRoutePanelTab("guidance");
-      updateRoutePanelVisibility();
-      scheduleStableRelayout();
+      return guidanceController.render(payload);
     }
 
     function connectQgisBridgeSignals() {
@@ -1744,7 +1346,7 @@
 
       if (qgisBridge.routeStatusChanged) {
         qgisBridge.routeStatusChanged.connect((success, message) => {
-          routeBusy = false;
+          routeInputController.complete();
           updateRouteControls();
           setStatus(message);
         });
@@ -1754,7 +1356,7 @@
           try {
             renderRouteGuidance(JSON.parse(payloadJson));
           } catch (error) {
-            routeGuidance = [];
+            renderRouteGuidance({});
             clearRoutePath();
             updateRoutePanelVisibility();
             setStatus("경로 안내 목록을 표시하지 못했습니다.");
@@ -1766,7 +1368,7 @@
           try {
             renderRouteHistory(JSON.parse(payloadJson));
           } catch (error) {
-            routeHistory = [];
+            renderRouteHistory({ items: [] });
             updateRoutePanelVisibility();
             setStatus("경로 이력 목록을 표시하지 못했습니다.");
           }
@@ -1785,8 +1387,7 @@
         qgisBridge.projectReset.connect((epoch) => {
           if (epoch === lastProjectEpoch) return;
           lastProjectEpoch = epoch;
-          routeBusy = false;
-          clearRouteInputs(true, false);
+          routeInputController.reset();
           clearRoutePath();
           updateRouteControls();
         });
@@ -1822,535 +1423,20 @@
       setStatus("외부 브라우저 연동을 아직 사용할 수 없습니다.");
     }
 
-    function currentMapCoordinate() {
-      if (!map) {
-        return null;
-      }
-      const center = map.getCenter();
-      return {
-        lon: center.getLng(),
-        lat: center.getLat()
-      };
-    }
-
-    function parseCoordinateInput(value) {
-      const separator = value.includes(",") ? /\s*,\s*/ : /\s+/;
-      const parts = value.trim().split(separator);
-      if (parts.length !== 2 || parts.some((part) => !part)) {
-        return null;
-      }
-
-      const first = Number(parts[0]);
-      const second = Number(parts[1]);
-      if (!Number.isFinite(first) || !Number.isFinite(second)) {
-        return null;
-      }
-
-      let lon = first;
-      let lat = second;
-      if (Math.abs(second) > 90 && Math.abs(first) <= 90) {
-        lon = second;
-        lat = first;
-      }
-
-      if (Math.abs(lon) > 180 || Math.abs(lat) > 90) {
-        return null;
-      }
-      return { lon, lat };
-    }
-
     function formatCoordinate(coordinate) {
       return `${coordinate.lon.toFixed(7)}, ${coordinate.lat.toFixed(7)}`;
     }
 
-    function resolveRouteLocation(value) {
-      const query = value.trim();
-      const coordinate = parseCoordinateInput(query);
-      if (coordinate) {
-        return Promise.resolve(coordinate);
-      }
-      if (!query || !placesService || !geocoderService) {
-        return Promise.reject(new Error("입력값을 좌표나 장소로 해석할 수 없습니다."));
-      }
-
-      return new Promise((resolve, reject) => {
-        const addressResults = [];
-        const placeResults = [];
-        let remaining = 2;
-
-        const finish = () => {
-          remaining -= 1;
-          if (remaining > 0) {
-            return;
-          }
-
-          const result = addressResults[0] || placeResults[0];
-          if (!result) {
-            reject(new Error(`위치를 찾지 못했습니다: ${query}`));
-            return;
-          }
-          resolve(result);
-        };
-
-        geocoderService.addressSearch(query, (data, status) => {
-          if (status === kakao.maps.services.Status.OK) {
-            data.forEach((item) => {
-              addressResults.push({ lon: Number(item.x), lat: Number(item.y) });
-            });
-          }
-          finish();
-        });
-
-        placesService.keywordSearch(query, (data, status) => {
-          if (status === kakao.maps.services.Status.OK) {
-            data.forEach((item) => {
-              placeResults.push({ lon: Number(item.x), lat: Number(item.y) });
-            });
-          }
-          finish();
-        });
-      });
-    }
-
     function updateRouteControls() {
-      const hasOrigin = Boolean(routeOriginInput.value.trim());
-      const hasDestination = Boolean(routeDestinationInput.value.trim());
-      const waypointsReady = routeWaypoints.every((waypoint) => waypoint.input.value.trim());
-      routeCreateButton.disabled = routeBusy || !(hasOrigin && hasDestination && waypointsReady);
-      routeHistoryOpenButton.disabled = routeBusy || !qgisBridge;
-      routeResetButton.disabled = routeBusy || !(hasOrigin || hasDestination || routeWaypoints.length);
-      routeSwapButton.disabled = !map || routeBusy || !(hasOrigin || hasDestination);
-      routePrioritySelect.disabled = !map || routeBusy;
-      routeAvoidToggle.disabled = !map || routeBusy;
-      routeAvoidCheckboxes.forEach((checkbox) => {
-        checkbox.disabled = !map || routeBusy;
-      });
-      routeVehicleToggle.disabled = !map || routeBusy;
-      routeCarType.disabled = !map || routeBusy;
-      routeCarFuel.disabled = !map || routeBusy;
-      routeCarHipass.disabled = !map || routeBusy;
-      routeAddWaypointButton.disabled = !map || routeBusy || routeWaypoints.length >= maxRouteWaypoints;
-      routeOriginInput.disabled = !map || routeBusy;
-      routeDestinationInput.disabled = !map || routeBusy;
-      routeOriginCurrentButton.disabled = !map || routeBusy;
-      routeDestinationCurrentButton.disabled = !map || routeBusy;
-      routeWaypoints.forEach((waypoint, index) => {
-        waypoint.input.disabled = !map || routeBusy;
-        waypoint.currentButton.disabled = !map || routeBusy;
-        waypoint.removeButton.disabled = routeBusy;
-        waypoint.upButton.disabled = routeBusy || index === 0;
-        waypoint.downButton.disabled = routeBusy || index === routeWaypoints.length - 1;
-      });
-    }
-
-    function publishRoutePoint(role, coordinate) {
-      if (qgisBridge && coordinate) {
-        qgisBridge.setRoutePoint(role, coordinate.lon, coordinate.lat);
-      }
-    }
-
-    function applyRouteSearchResult(
-      input,
-      pointId,
-      label,
-      coordinate,
-      displayValue,
-      onResolved
-    ) {
-      input.value = displayValue || formatCoordinate(coordinate);
-      onResolved(coordinate);
-      publishRoutePoint(pointId, coordinate);
-      searchResults.hidden = true;
-
-      if (map) {
-        map.setLevel(4);
-        moveViewer(coordinate.lon, coordinate.lat);
-      }
-      if (qgisBridge) {
-        qgisBridge.moveQgisCenter(coordinate.lon, coordinate.lat);
-      }
-      setStatus(
-        `${label} 지정: ${coordinate.lat.toFixed(6)}, ${coordinate.lon.toFixed(6)}`
-      );
-      updateRouteControls();
-    }
-
-    function searchRouteInput(
-      input,
-      pointIdProvider,
-      labelProvider,
-      onResolved,
-      selectFirst = false
-    ) {
-      const query = input.value.trim();
-      if (!query) {
-        return;
-      }
-
-      const pointId = pointIdProvider();
-      const label = labelProvider();
-      const coordinate = parseCoordinateInput(query);
-      if (coordinate) {
-        applyRouteSearchResult(
-          input,
-          pointId,
-          label,
-          coordinate,
-          formatCoordinate(coordinate),
-          onResolved
-        );
-        return;
-      }
-
-      searchLocal(
-        query,
-        (result) => {
-          applyRouteSearchResult(
-            input,
-            pointId,
-            label,
-            { lon: result.lon, lat: result.lat },
-            result.title || result.address,
-            onResolved
-          );
-        },
-        false,
-        selectFirst
-      );
-    }
-
-    function bindRouteInput(input, pointIdProvider, labelProvider, onResolved) {
-      input.addEventListener("input", () => {
-        onResolved(null);
-        searchRequestId += 1;
-        searchResults.hidden = true;
-        if (qgisBridge) {
-          qgisBridge.clearRoutePoint(pointIdProvider());
-        }
-        updateRouteControls();
-
-        window.clearTimeout(routeSearchTimer);
-        if (!input.value.trim()) {
-          return;
-        }
-        routeSearchTimer = window.setTimeout(() => {
-          searchRouteInput(input, pointIdProvider, labelProvider, onResolved);
-        }, 500);
-      });
-
-      input.addEventListener("keydown", (event) => {
-        if (event.key !== "Enter") {
-          return;
-        }
-        event.preventDefault();
-        window.clearTimeout(routeSearchTimer);
-        searchRouteInput(
-          input,
-          pointIdProvider,
-          labelProvider,
-          onResolved,
-          true
-        );
-      });
-    }
-
-    function waypointPointId(waypoint) {
-      return `waypoint:${waypoint.id}`;
-    }
-
-    function updateWaypointLabels() {
-      routeWaypoints.forEach((waypoint, index) => {
-        waypoint.label.textContent = `경유 ${index + 1}`;
-        waypoint.input.setAttribute("aria-label", `경유지 ${index + 1}`);
-        waypoint.currentButton.title = `현재 지도 중심을 경유지 ${index + 1}로 사용`;
-        waypoint.removeButton.title = `경유지 ${index + 1} 삭제`;
-        waypoint.removeButton.setAttribute("aria-label", `경유지 ${index + 1} 삭제`);
-        waypoint.upButton.title = `경유지 ${index + 1} 위로 이동`;
-        waypoint.upButton.setAttribute("aria-label", `경유지 ${index + 1} 위로 이동`);
-        waypoint.downButton.title = `경유지 ${index + 1} 아래로 이동`;
-        waypoint.downButton.setAttribute("aria-label", `경유지 ${index + 1} 아래로 이동`);
-      });
-    }
-
-    function moveWaypoint(waypoint, offset) {
-      const index = routeWaypoints.indexOf(waypoint);
-      const targetIndex = index + offset;
-      if (index < 0 || targetIndex < 0 || targetIndex >= routeWaypoints.length) {
-        return;
-      }
-
-      window.clearTimeout(routeSearchTimer);
-      searchRequestId += 1;
-      searchResults.hidden = true;
-      routeWaypoints.splice(index, 1);
-      routeWaypoints.splice(targetIndex, 0, waypoint);
-      routeWaypointsContainer.replaceChildren(
-        ...routeWaypoints.map((candidate) => candidate.row)
-      );
-      updateWaypointLabels();
-      updateRouteControls();
-      setStatus(`경유지 ${targetIndex + 1} 순서로 이동했습니다.`);
-    }
-
-    function swapRouteEndpoints() {
-      window.clearTimeout(routeSearchTimer);
-      searchRequestId += 1;
-      searchResults.hidden = true;
-
-      const originValue = routeOriginInput.value;
-      routeOriginInput.value = routeDestinationInput.value;
-      routeDestinationInput.value = originValue;
-      [routeOrigin, routeDestination] = [routeDestination, routeOrigin];
-
-      if (qgisBridge) {
-        qgisBridge.clearRoutePoint("origin");
-        qgisBridge.clearRoutePoint("destination");
-        publishRoutePoint("origin", routeOrigin);
-        publishRoutePoint("destination", routeDestination);
-      }
-      updateRouteControls();
-      setStatus("출발지와 도착지를 바꿨습니다.");
-    }
-
-    function removeWaypoint(waypoint) {
-      const index = routeWaypoints.indexOf(waypoint);
-      if (index < 0) {
-        return;
-      }
-      window.clearTimeout(routeSearchTimer);
-      searchRequestId += 1;
-      searchResults.hidden = true;
-      if (qgisBridge) {
-        qgisBridge.clearRoutePoint(waypointPointId(waypoint));
-      }
-      routeWaypoints.splice(index, 1);
-      waypoint.row.remove();
-      updateWaypointLabels();
-      updateRouteControls();
-      setStatus("경유지를 삭제했습니다.");
-    }
-
-    function addWaypoint() {
-      if (routeWaypoints.length >= maxRouteWaypoints) {
-        setStatus(`경유지는 최대 ${maxRouteWaypoints}개까지 추가할 수 있습니다.`);
-        return;
-      }
-
-      const row = document.createElement("div");
-      row.className = "route-waypoint";
-
-      const label = document.createElement("span");
-      label.className = "route-label";
-
-      const input = document.createElement("input");
-      input.className = "route-input";
-      input.type = "text";
-      input.placeholder = "주소·장소 또는 경도,위도";
-      input.autocomplete = "off";
-
-      const currentButton = document.createElement("button");
-      currentButton.className = "route-current";
-      currentButton.type = "button";
-      currentButton.textContent = "현재 위치";
-
-      const removeButton = document.createElement("button");
-      removeButton.className = "route-waypoint-remove";
-      removeButton.type = "button";
-      removeButton.textContent = "×";
-
-      const orderContainer = document.createElement("span");
-      orderContainer.className = "route-waypoint-order";
-
-      const upButton = document.createElement("button");
-      upButton.type = "button";
-      upButton.textContent = "↑";
-
-      const downButton = document.createElement("button");
-      downButton.type = "button";
-      downButton.textContent = "↓";
-
-      const waypoint = {
-        id: nextWaypointId++,
-        coordinate: null,
-        row,
-        label,
-        input,
-        currentButton,
-        removeButton,
-        upButton,
-        downButton
-      };
-
-      bindRouteInput(
-        input,
-        () => waypointPointId(waypoint),
-        () => `경유지 ${routeWaypoints.indexOf(waypoint) + 1}`,
-        (coordinate) => {
-          waypoint.coordinate = coordinate;
-        }
-      );
-
-      currentButton.addEventListener("click", () => {
-        window.clearTimeout(routeSearchTimer);
-        searchRequestId += 1;
-        searchResults.hidden = true;
-        waypoint.coordinate = currentMapCoordinate();
-        if (waypoint.coordinate) {
-          input.value = formatCoordinate(waypoint.coordinate);
-          publishRoutePoint(waypointPointId(waypoint), waypoint.coordinate);
-          const index = routeWaypoints.indexOf(waypoint) + 1;
-          setStatus(
-            `경유지 ${index}: ${waypoint.coordinate.lat.toFixed(6)}, ` +
-            waypoint.coordinate.lon.toFixed(6)
-          );
-        }
-        updateRouteControls();
-      });
-
-      removeButton.addEventListener("click", () => removeWaypoint(waypoint));
-      upButton.addEventListener("click", () => moveWaypoint(waypoint, -1));
-      downButton.addEventListener("click", () => moveWaypoint(waypoint, 1));
-      orderContainer.append(upButton, downButton);
-
-      row.append(label, input, currentButton, orderContainer, removeButton);
-      routeWaypoints.push(waypoint);
-      routeWaypointsContainer.appendChild(row);
-      updateWaypointLabels();
-      updateRouteControls();
-      input.focus();
-      setStatus(`${routeWaypoints.length}번째 경유지를 추가했습니다.`);
+      return routeInputController.updateControls();
     }
 
     function clearRouteInputs(resetOptions = true, notifyQgis = true) {
-      window.clearTimeout(routeSearchTimer);
-      searchRequestId += 1;
-      searchResults.hidden = true;
-      routeOrigin = null;
-      routeDestination = null;
-      routeOriginInput.value = "";
-      routeDestinationInput.value = "";
-      routeWaypoints.forEach((waypoint) => waypoint.row.remove());
-      routeWaypoints.length = 0;
-      nextWaypointId = 1;
-
-      if (resetOptions) {
-        routePrioritySelect.value = "RECOMMEND";
-        routeAvoidCheckboxes.forEach((checkbox) => {
-          checkbox.checked = false;
-        });
-        routeCarType.value = "1";
-        routeCarFuel.value = "GASOLINE";
-        routeCarHipass.checked = false;
-      }
-
-      routeAvoidOptions.hidden = true;
-      routeAvoidToggle.setAttribute("aria-expanded", "false");
-      updateRouteAvoidSummary();
-      routeVehicleOptions.hidden = true;
-      routeVehicleToggle.setAttribute("aria-expanded", "false");
-      updateRouteVehicleSummary();
-      if (qgisBridge && notifyQgis) {
-        qgisBridge.clearRoutePoints();
-      }
-      updateRouteControls();
+      return routeInputController.clear(resetOptions, notifyQgis);
     }
 
     function routeInputLabel(location, fallback) {
-      const label = location && location.label ? String(location.label).trim() : "";
-      if (label) {
-        return label;
-      }
-      if (
-        location &&
-        Number.isFinite(Number(location.lon)) &&
-        Number.isFinite(Number(location.lat))
-      ) {
-        return formatCoordinate({
-          lon: Number(location.lon),
-          lat: Number(location.lat)
-        });
-      }
-      return fallback;
-    }
-
-    function routePointTooltip(location) {
-      if (
-        location &&
-        Number.isFinite(Number(location.lon)) &&
-        Number.isFinite(Number(location.lat))
-      ) {
-        return `${Number(location.lon).toFixed(7)}, ${Number(location.lat).toFixed(7)}`;
-      }
-      return "";
-    }
-
-    function renderRouteOverview(payload) {
-      const points = [];
-      if (payload && payload.origin) {
-        points.push({
-          role: "출발",
-          location: payload.origin,
-          fallback: "출발지"
-        });
-      }
-
-      const waypoints = payload && Array.isArray(payload.waypoints)
-        ? payload.waypoints
-        : [];
-      waypoints.forEach((waypoint, index) => {
-        points.push({
-          role: `경유 ${index + 1}`,
-          location: waypoint,
-          fallback: `경유지 ${index + 1}`
-        });
-      });
-
-      if (payload && payload.destination) {
-        points.push({
-          role: "도착",
-          location: payload.destination,
-          fallback: "도착지"
-        });
-      }
-
-      routeGuidanceOverview.textContent = "";
-      if (!points.length) {
-        routeGuidanceOverview.hidden = true;
-        return;
-      }
-
-      points.forEach((point) => {
-        const item = document.createElement("span");
-        item.className = "route-overview-point";
-        const tooltip = routePointTooltip(point.location);
-        if (tooltip) {
-          item.title = tooltip;
-        }
-
-        const role = document.createElement("span");
-        role.className = "route-overview-role";
-        role.textContent = point.role;
-
-        const label = document.createElement("span");
-        label.className = "route-overview-label";
-        label.textContent = routeInputLabel(point.location, point.fallback);
-
-        item.append(role, label);
-        routeGuidanceOverview.appendChild(item);
-      });
-      routeGuidanceOverview.hidden = activeRoutePanelTab === "history";
-    }
-
-    function applyLoadedRoutePoint(pointId, location) {
-      const coordinate = {
-        lon: Number(location.lon),
-        lat: Number(location.lat)
-      };
-      if (!Number.isFinite(coordinate.lon) || !Number.isFinite(coordinate.lat)) {
-        return null;
-      }
-      publishRoutePoint(pointId, coordinate);
-      return coordinate;
+      return guidanceController.inputLabel(location, fallback);
     }
 
     function syncKakaoMapToQgis(updateRoadview = false) {
@@ -2425,30 +1511,6 @@
       }, 100);
     }
 
-    function normalizePlaceResult(place) {
-      return {
-        title: place.place_name || place.address_name || "검색 결과",
-        address: place.road_address_name || place.address_name || "",
-        lon: Number(place.x),
-        lat: Number(place.y)
-      };
-    }
-
-    function normalizeAddressResult(address) {
-      const detail = address.road_address && address.road_address.address_name
-        ? address.road_address.address_name
-        : address.address && address.address.address_name
-          ? address.address.address_name
-          : "주소 검색 결과";
-
-      return {
-        title: address.address_name || detail,
-        address: detail,
-        lon: Number(address.x),
-        lat: Number(address.y)
-      };
-    }
-
     function selectSearchResult(result) {
       map.setLevel(4);
       moveViewer(result.lon, result.lat);
@@ -2460,124 +1522,8 @@
       setStatus(`검색 결과 → QGIS EPSG:4326 ${result.lat.toFixed(6)}, ${result.lon.toFixed(6)}`);
     }
 
-    function renderSearchResults(results, onSelect = selectSearchResult) {
-      searchResults.textContent = "";
-
-      if (!results.length) {
-        const empty = document.createElement("div");
-        empty.className = "search-empty";
-        empty.textContent = "검색 결과가 없습니다.";
-        searchResults.appendChild(empty);
-        searchResults.hidden = false;
-        return;
-      }
-
-      results.slice(0, 20).forEach((result) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "search-result";
-        button.setAttribute("role", "option");
-
-        const title = document.createElement("span");
-        title.className = "search-result-title";
-        title.textContent = result.title;
-
-        const address = document.createElement("span");
-        address.className = "search-result-address";
-        address.textContent = result.address;
-
-        button.appendChild(title);
-        button.appendChild(address);
-        button.addEventListener("click", () => onSelect(result));
-        searchResults.appendChild(button);
-      });
-
-      searchResults.hidden = false;
-    }
-
-    function searchLocal(
-      query,
-      onSelect = selectSearchResult,
-      manageSearchButton = true,
-      selectFirst = false
-    ) {
-      if (!placesService || !geocoderService) {
-        setStatus("카카오 장소·주소 검색이 아직 준비되지 않았습니다.");
-        return;
-      }
-
-      const requestId = ++searchRequestId;
-      const collected = [];
-      let remaining = 2;
-      let failed = false;
-
-      if (manageSearchButton) {
-        searchSubmit.disabled = true;
-      }
-      setStatus(`카카오 장소·주소 검색 중: ${query}`);
-
-      const finish = () => {
-        if (requestId !== searchRequestId) {
-          return;
-        }
-
-        remaining -= 1;
-        if (remaining > 0) {
-          return;
-        }
-
-        const unique = new Map();
-        collected.forEach((result) => {
-          if (!Number.isFinite(result.lon) || !Number.isFinite(result.lat)) {
-            return;
-          }
-          const key = `${result.lon.toFixed(7)},${result.lat.toFixed(7)},${result.title}`;
-          if (!unique.has(key)) {
-            unique.set(key, result);
-          }
-        });
-
-        const results = Array.from(unique.values());
-        if (selectFirst && results.length) {
-          searchResults.hidden = true;
-          if (manageSearchButton) {
-            searchSubmit.disabled = false;
-          }
-          onSelect(results[0]);
-          return;
-        }
-        renderSearchResults(results, onSelect);
-        if (manageSearchButton) {
-          searchSubmit.disabled = false;
-        }
-        setStatus(failed && !results.length
-          ? "카카오 장소·주소 검색에 실패했습니다."
-          : `카카오 장소·주소 검색 결과: ${results.length}개`);
-      };
-
-      placesService.keywordSearch(query, (data, status) => {
-        if (requestId !== searchRequestId) {
-          return;
-        }
-        if (status === kakao.maps.services.Status.OK) {
-          data.forEach((place) => collected.push(normalizePlaceResult(place)));
-        } else if (status === kakao.maps.services.Status.ERROR) {
-          failed = true;
-        }
-        finish();
-      });
-
-      geocoderService.addressSearch(query, (data, status) => {
-        if (requestId !== searchRequestId) {
-          return;
-        }
-        if (status === kakao.maps.services.Status.OK) {
-          data.forEach((address) => collected.push(normalizeAddressResult(address)));
-        } else if (status === kakao.maps.services.Status.ERROR) {
-          failed = true;
-        }
-        finish();
-      });
+    function searchLocal(...args) {
+      return searchController.search(...args);
     }
 
     function loadKakaoScript(appKey) {
@@ -2684,8 +1630,8 @@
 
       setStatus("준비되었습니다. QGIS·카카오 지도·로드뷰 위치 동기화가 활성화되었습니다.");
       moveViewer(defaultCenter.lon, defaultCenter.lat);
-      if (latestRouteGuidancePayload) {
-        renderRouteGuidance(latestRouteGuidancePayload);
+      if (guidanceController.payload) {
+        renderRouteGuidance(guidanceController.payload);
       }
       scheduleStableRelayout();
 
@@ -2805,36 +1751,6 @@
 
     openExternalViewerButton.addEventListener("click", openExternalViewer);
 
-    searchForm.addEventListener("submit", (event) => {
-      event.preventDefault();
-      const query = searchQuery.value.trim();
-      if (!query) {
-        searchQuery.focus();
-        return;
-      }
-      searchLocal(query);
-    });
-
-    searchQuery.addEventListener("input", () => {
-      searchClear.disabled = !searchQuery.value;
-    });
-
-    searchQuery.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") {
-        searchResults.hidden = true;
-      }
-    });
-
-    searchClear.addEventListener("click", () => {
-      searchRequestId += 1;
-      searchQuery.value = "";
-      searchResults.textContent = "";
-      searchResults.hidden = true;
-      searchClear.disabled = true;
-      searchSubmit.disabled = false;
-      searchQuery.focus();
-    });
-
     routeGuidanceToggle.addEventListener("click", () => {
       const collapsed = routeGuidancePanel.dataset.collapsed === "true";
       routeGuidancePanel.dataset.collapsed = collapsed ? "false" : "true";
@@ -2862,168 +1778,7 @@
       routeGuidanceToggle.setAttribute("aria-label", "경로 안내 접기");
       activateRoutePanelTab("history");
       routeGuidancePanel.scrollIntoView({ block: "nearest" });
-      setStatus(routeHistory.length ? "경로 이력을 열었습니다." : "경로 이력을 확인하고 있습니다.");
-    });
-
-    routeAddWaypointButton.addEventListener("click", addWaypoint);
-
-    routePrioritySelect.addEventListener("change", () => {
-      const label = routePrioritySelect.options[routePrioritySelect.selectedIndex].text;
-      setStatus(`경로 유형: ${label}`);
-    });
-
-    routeAvoidToggle.addEventListener("click", () => {
-      const opening = routeAvoidOptions.hidden;
-      routeAvoidOptions.hidden = !opening;
-      routeAvoidToggle.setAttribute("aria-expanded", opening ? "true" : "false");
-      if (opening) {
-        routeVehicleOptions.hidden = true;
-        routeVehicleToggle.setAttribute("aria-expanded", "false");
-      }
-    });
-
-    routeAvoidCheckboxes.forEach((checkbox) => {
-      checkbox.addEventListener("change", () => {
-        updateRouteAvoidSummary();
-        const count = selectedRouteAvoidOptions().length;
-        setStatus(count ? `경로 회피 옵션 ${count}개 선택` : "경로 회피 옵션 없음");
-      });
-    });
-
-    routeVehicleToggle.addEventListener("click", () => {
-      const opening = routeVehicleOptions.hidden;
-      routeVehicleOptions.hidden = !opening;
-      routeVehicleToggle.setAttribute("aria-expanded", opening ? "true" : "false");
-      if (opening) {
-        routeAvoidOptions.hidden = true;
-        routeAvoidToggle.setAttribute("aria-expanded", "false");
-      }
-    });
-
-    [routeCarType, routeCarFuel, routeCarHipass].forEach((control) => {
-      control.addEventListener("change", () => {
-        updateRouteVehicleSummary();
-        setStatus(routeVehicleToggle.title);
-      });
-    });
-
-    routeSwapButton.addEventListener("click", swapRouteEndpoints);
-
-    bindRouteInput(
-      routeOriginInput,
-      () => "origin",
-      () => "출발지",
-      (coordinate) => {
-        routeOrigin = coordinate;
-      }
-    );
-
-    bindRouteInput(
-      routeDestinationInput,
-      () => "destination",
-      () => "도착지",
-      (coordinate) => {
-        routeDestination = coordinate;
-      }
-    );
-
-    routeOriginCurrentButton.addEventListener("click", () => {
-      window.clearTimeout(routeSearchTimer);
-      searchRequestId += 1;
-      searchResults.hidden = true;
-      routeOrigin = currentMapCoordinate();
-      if (routeOrigin) {
-        routeOriginInput.value = formatCoordinate(routeOrigin);
-        publishRoutePoint("origin", routeOrigin);
-        setStatus(`출발지: ${routeOrigin.lat.toFixed(6)}, ${routeOrigin.lon.toFixed(6)}`);
-      }
-      updateRouteControls();
-    });
-
-    routeDestinationCurrentButton.addEventListener("click", () => {
-      window.clearTimeout(routeSearchTimer);
-      searchRequestId += 1;
-      searchResults.hidden = true;
-      routeDestination = currentMapCoordinate();
-      if (routeDestination) {
-        routeDestinationInput.value = formatCoordinate(routeDestination);
-        publishRoutePoint("destination", routeDestination);
-        setStatus(`도착지: ${routeDestination.lat.toFixed(6)}, ${routeDestination.lon.toFixed(6)}`);
-      }
-      updateRouteControls();
-    });
-
-    routeCreateButton.addEventListener("click", async () => {
-      if (!qgisBridge) {
-        setStatus("QGIS 경로 탐색 연결이 아직 준비되지 않았습니다.");
-        return;
-      }
-
-      window.clearTimeout(routeSearchTimer);
-      searchRequestId += 1;
-      searchResults.hidden = true;
-      routeAvoidOptions.hidden = true;
-      routeAvoidToggle.setAttribute("aria-expanded", "false");
-      routeVehicleOptions.hidden = true;
-      routeVehicleToggle.setAttribute("aria-expanded", "false");
-      routeBusy = true;
-      updateRouteControls();
-      setStatus("출발지, 경유지, 도착지를 확인하고 있습니다...");
-
-      try {
-        const locations = await Promise.all([
-          routeOrigin || resolveRouteLocation(routeOriginInput.value),
-          ...routeWaypoints.map((waypoint) => (
-            waypoint.coordinate || resolveRouteLocation(waypoint.input.value)
-          )),
-          routeDestination || resolveRouteLocation(routeDestinationInput.value)
-        ]);
-        routeOrigin = locations[0];
-        routeDestination = locations[locations.length - 1];
-        routeWaypoints.forEach((waypoint, index) => {
-          waypoint.coordinate = locations[index + 1];
-        });
-      } catch (error) {
-        routeBusy = false;
-        setStatus(error.message);
-        updateRouteControls();
-        return;
-      }
-
-      publishRoutePoint("origin", routeOrigin);
-      publishRoutePoint("destination", routeDestination);
-      routeWaypoints.forEach((waypoint) => {
-        publishRoutePoint(waypointPointId(waypoint), waypoint.coordinate);
-      });
-      const waypointPayload = routeWaypoints.map((waypoint) => ({
-        id: waypointPointId(waypoint),
-        label: waypoint.input.value.trim(),
-        lon: waypoint.coordinate.lon,
-        lat: waypoint.coordinate.lat
-      }));
-      setStatus(
-        routeWaypoints.length
-          ? `경유지 ${routeWaypoints.length}개를 포함한 경로를 탐색하고 있습니다...`
-          : "Kakao Mobility 경로를 탐색하고 있습니다..."
-      );
-      qgisBridge.requestRoute(
-        routeOrigin.lon,
-        routeOrigin.lat,
-        routeDestination.lon,
-        routeDestination.lat,
-        routePrioritySelect.value,
-        JSON.stringify(waypointPayload),
-        JSON.stringify(selectedRouteAvoidOptions()),
-        JSON.stringify(selectedRouteVehicleOptions()),
-        routeOriginInput.value.trim(),
-        routeDestinationInput.value.trim()
-      );
-    });
-
-    routeResetButton.addEventListener("click", () => {
-      clearRouteInputs(true);
-      clearRoutePath();
-      setStatus("경로 지점을 초기화했습니다.");
+      setStatus(historyController.count ? "경로 이력을 열었습니다." : "경로 이력을 확인하고 있습니다.");
     });
 
     function moveViewer(lon, lat) {
@@ -3069,60 +1824,8 @@
       moveViewer(lon, lat);
     };
 
-    window.loadRouteHistoryInput = function loadRouteHistoryInput(payload) {
-      clearRouteInputs(false);
+    window.loadRouteHistoryInput = (payload) => routeInputController.load(payload);
 
-      const origin = payload.origin || {};
-      const destination = payload.destination || {};
-      routeOriginInput.value = routeInputLabel(origin, "출발지");
-      routeDestinationInput.value = routeInputLabel(destination, "도착지");
-      routeOrigin = applyLoadedRoutePoint("origin", origin);
-      routeDestination = applyLoadedRoutePoint("destination", destination);
-
-      const waypoints = Array.isArray(payload.waypoints)
-        ? payload.waypoints.slice(0, maxRouteWaypoints)
-        : [];
-      waypoints.forEach((waypointPayload) => {
-        addWaypoint();
-        const waypoint = routeWaypoints[routeWaypoints.length - 1];
-        waypoint.input.value = routeInputLabel(
-          waypointPayload,
-          `경유지 ${routeWaypoints.length}`
-        );
-        waypoint.coordinate = applyLoadedRoutePoint(
-          waypointPointId(waypoint),
-          waypointPayload
-        );
-      });
-
-      if (payload.priority && routePrioritySelect.querySelector(`option[value="${payload.priority}"]`)) {
-        routePrioritySelect.value = payload.priority;
-      }
-
-      const avoid = Array.isArray(payload.avoid) ? payload.avoid : [];
-      routeAvoidCheckboxes.forEach((checkbox) => {
-        checkbox.checked = avoid.includes(checkbox.value);
-      });
-      updateRouteAvoidSummary();
-
-      const vehicle = payload.vehicle || {};
-      if (vehicle.car_type !== undefined) {
-        routeCarType.value = String(vehicle.car_type);
-      }
-      if (vehicle.car_fuel) {
-        routeCarFuel.value = vehicle.car_fuel;
-      }
-      routeCarHipass.checked = Boolean(vehicle.car_hipass);
-      updateRouteVehicleSummary();
-
-      updateRouteControls();
-      if (routeOrigin) {
-        moveViewer(routeOrigin.lon, routeOrigin.lat);
-      }
-      setStatus("선택한 이력을 경로 입력창으로 불러왔습니다.");
-    };
-
-    updateRouteVehicleSummary();
     applyViewerSplit(savedViewerSplit());
     applyViewerLayout(savedViewerLayout());
     initQgisBridge();

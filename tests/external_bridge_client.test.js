@@ -160,11 +160,11 @@ test("viewer reset releases busy state once per project epoch", () => {
   const handler = html.match(/qgisBridge.projectReset.connect\((\(epoch\) => \{[^]*?\n        \})\);/)[1];
   const calls = [];
   const context = vm.createContext({
-    clearRouteInputs: (resetOptions, notifyQgis) => calls.push(["inputs", resetOptions, notifyQgis]),
+    routeInputController: { reset() { context.routeBusy = false; calls.push(["inputs", true, false]); } },
     clearRoutePath: () => calls.push(["path"]),
     updateRouteControls: () => calls.push(["controls"]),
   });
-  vm.runInContext(`let routeBusy = true; let lastProjectEpoch = null; const reset = ${handler}; reset(1);`, context);
+  vm.runInContext(`var routeBusy = true; let lastProjectEpoch = null; const reset = ${handler}; reset(1);`, context);
   assert.equal(vm.runInContext("routeBusy", context), false);
   assert.deepEqual(calls, [["inputs", true, false], ["path"], ["controls"]]);
   vm.runInContext("routeBusy = true; reset(1);", context);

@@ -102,6 +102,39 @@ def run(root):
         require([r["history_id"] for r in source._route_history_payload()["items"]] == ["h2", "h1"], "list order")
         checks.append("query copies, missing IDs, guide/list ordering")
 
+        # Input restoration must reach both transports after controller extraction.
+        source.dock = Mock()
+        source.external_bridge_server = Mock()
+        source._load_route_history("h1")
+        script = source.dock.web_view.page.return_value.runJavaScript.call_args.args[0]
+        require("window.loadRouteHistoryInput" in script and "waypoints" in script,
+                "dock input restoration missing")
+        signal, encoded = source.external_bridge_server.emit_signal.call_args.args
+        require(signal == "loadRouteHistoryInput"
+                and json.loads(encoded)["waypoints"][0]["label"] == "경유지",
+                "external input restoration missing")
+        source.dock.web_view.page.return_value.runJavaScript.reset_mock()
+        source.external_bridge_server.emit_signal.reset_mock()
+        source._load_route_history("missing")
+        source.dock.web_view.page.return_value.runJavaScript.assert_not_called()
+        source.external_bridge_server.emit_signal.assert_not_called()
+        source.dock = None
+        source.external_bridge_server = None
+        checks.append("controller input restoration reaches both transports; missing ID ignored")
+
+        from kakao_qgis_bridge.history_operations import HistoryOperationError
+        info_count = len(source.iface.messages.info)
+        with patch("kakao_qgis_bridge.plugin.QMessageBox.question", return_value=MSGBOX_YES), \
+             patch.object(source.history_repository, "delete_history",
+                          side_effect=HistoryOperationError("이력 삭제", "fixture failure")), \
+             patch("kakao_qgis_bridge.plugin.QMessageBox.critical") as error:
+            source._delete_route_history("h1")
+        require(error.called and source.route_history_layer.featureCount() == 2,
+                "failed deletion changed data or omitted error")
+        require(len(source.iface.messages.info) == info_count,
+                "failed deletion reported success")
+        checks.append("controller deletion failure preserves data and omits success")
+
         with tempfile.TemporaryDirectory(prefix="kakao-history-", ignore_cleanup_errors=True) as directory:
             output = Path(directory)
             for suffix in (".gpkg", ".geojson", ".shp"):

@@ -1,4 +1,7 @@
-# Kakao QGIS Bridge 1.2.0
+# Kakao QGIS Bridge 1.2.1
+
+이번 ZIP은 누적 리팩토링 배포 후보다. 자동 회귀 및 Bandit 검사를 통과했으며,
+설치 후 실제 Kakao SDK 화면 확인은 별도로 필요하다.
 
 ## 설치와 키 설정
 

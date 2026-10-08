@@ -10,6 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 from .settings import PLUGIN_DIR, kakao_javascript_key
+from .viewer_page import load_viewer_template
 
 
 EXTERNAL_BRIDGE_SCRIPT = r"""
@@ -499,9 +500,7 @@ class KakaoExternalBridgeServer:
             return result
 
     def _viewer_html(self):
-        html = (PLUGIN_DIR / "web" / "kakao_viewer.html").read_text(
-            encoding="utf-8"
-        )
+        html = load_viewer_template(PLUGIN_DIR)
         html = html.replace(
             '<script src="qrc:///qtwebchannel/qwebchannel.js"></script>',
             EXTERNAL_BRIDGE_SCRIPT,

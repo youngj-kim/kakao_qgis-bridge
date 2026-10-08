@@ -4,6 +4,29 @@ Distribution scope (2026-10-08): GitHub source and ZIP files. The user has
 excluded uploading to the official QGIS plugin repository. Historical upload
 items below are retained as past planning, not current tasks.
 
+## 1.2.1 candidate — 2026-10-08
+
+This section tracks the latest cumulative refactoring candidate. Earlier checked
+items below do not establish that this ZIP was manually installed and tested.
+
+- [x] Extract history and export UI controllers.
+- [x] Extract viewer search, guidance, history and route-input controllers.
+- [x] Review optional SDK/layout separation; retain shared synchronization state.
+- [x] Check project boundaries and late route-location callbacks.
+- [x] Run Python 62 and JavaScript 37 tests, syntax checks and compilation.
+- [x] Run QGIS 3.44.14/4.2.2 HTML assembly, bridge, project, history and export regressions.
+- [x] Run Bandit 1.9.4: no findings, no skipped files or disabled test rules.
+- [x] Update metadata, descriptions, changelog and installation notes to 1.2.1 candidate.
+- [x] Verify candidate ZIP: 45 files, integrity/source agreement and local settings/cache excluded.
+- [ ] Commit/push cumulative source changes and confirm the new GitHub CI run.
+- [ ] Manually install the latest candidate and test actual Kakao SDK in QGIS 3 and 4.
+- [ ] Validate declared minimum QGIS 3.34 when a runnable environment is available.
+- [ ] Confirm SDK terms and quota suitability for the intended use.
+- [ ] Final release/tag only after the required manual checks and a release request.
+
+Candidate: dist/kakao_qgis_bridge-1.2.1.zip.
+See route-input-refactoring.md for scope, test boundaries and the manual checklist.
+
 ## 1.2.0 preparation status — 2026-10-07
 
 The checklist below this section records earlier release work. Its checked

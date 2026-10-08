@@ -2,7 +2,10 @@ const fs = require("fs");
 const path = require("path");
 
 const viewer = path.join(__dirname, "..", "kakao_qgis_bridge", "web", "kakao_viewer.html");
-const html = fs.readFileSync(viewer, "utf8");
+const html = fs.readFileSync(viewer, "utf8").replace(
+  /__VIEWER_([A-Z_]+)_SCRIPT__/g,
+  (_, name) => fs.readFileSync(path.join(path.dirname(viewer), "viewer_" + name.toLowerCase() + ".js"), "utf8")
+);
 const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)]
   .map((match) => match[1])
   .filter((source) => source.trim());

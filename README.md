@@ -1,8 +1,8 @@
 # Kakao QGIS Bridge
 
-현재 버전은 **1.2.0**입니다. QGIS 3.34 이상과 QGIS 4 / Qt 6 환경을 대상으로 하는 Python 플러그인입니다. 실제 실행 검증은 Windows의 QGIS 3.44.14와 4.2.2에서 수행했으며, 최소 선언 버전인 3.34는 이번 버전에서 실행 검증하지 못했습니다. 누적 변경과 남은 제한은 [CHANGELOG.md](CHANGELOG.md)를 참고하세요.
+현재 개발 버전은 **1.2.1 배포 후보**입니다. QGIS 3.34 이상과 QGIS 4 / Qt 6 환경을 대상으로 하는 Python 플러그인입니다. 자동 실행 검증은 Windows의 QGIS 3.44.14와 4.2.2에서 수행했으며, 최소 선언 버전인 3.34와 최신 ZIP의 실제 Kakao SDK 화면은 별도 확인이 필요합니다. 누적 변경과 남은 제한은 [CHANGELOG.md](CHANGELOG.md)를 참고하세요.
 
-이 플러그인은 Kakao 지도 타일 URL을 추출하거나 QGIS XYZ/TMS 배경지도로 등록하지 않습니다. 대신 QGIS Dock Widget 안의 `QWebEngineView`에서 Kakao Maps JavaScript API를 로드하고, QGIS 기본 탐색 기능으로 변경된 캔버스 중심 좌표를 EPSG:4326으로 변환해 Kakao Map과 Roadview 중심으로 전달합니다.
+이 플러그인은 Kakao 지도 타일 URL을 추출하거나 QGIS XYZ/TMS 배경지도로 등록하지 않습니다. WebEngine이 있으면 QGIS 도크에서, 없으면 외부 브라우저에서 Kakao Maps JavaScript API를 표시합니다. QGIS 캔버스 중심 좌표를 EPSG:4326으로 변환해 Kakao Map과 Roadview 중심으로 전달합니다.
 
 ![Kakao Map / Roadview dock](docs/screenshots/02-dock-basic.png)
 

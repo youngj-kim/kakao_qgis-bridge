@@ -1,5 +1,6 @@
 import json
 import math
+from .viewer_page import load_viewer_template
 
 from qgis.PyQt.QtCore import QObject, Qt, QUrl, pyqtSignal, pyqtSlot
 from qgis.PyQt.QtGui import QDesktopServices, QKeySequence
@@ -447,8 +448,7 @@ class KakaoMapDockWidget(QDockWidget):
         QDesktopServices.openUrl(url)
 
     def _load_viewer(self):
-        template_path = PLUGIN_DIR / "web" / "kakao_viewer.html"
-        html = template_path.read_text(encoding="utf-8")
+        html = load_viewer_template(PLUGIN_DIR)
         html = html.replace(
             "__KAKAO_APP_KEY_JSON__",
             json.dumps(kakao_javascript_key()),

@@ -1,6 +1,6 @@
 # Kakao QGIS Bridge
 
-QGIS와 Kakao Map·Roadview를 연결하는 플러그인입니다. QGIS 3.34 이상과 QGIS 4 / Qt 6 환경을 대상으로 합니다. 버전별 변경사항은 [CHANGELOG](CHANGELOG.md), 자세한 사용법은 [사용 가이드](docs/usage.md)를 참고하세요.
+QGIS와 Kakao Map·Roadview를 연결하는 플러그인입니다. QGIS 3.34 이상(3.34는 미검증)과 QGIS 4 / Qt 6 환경을 대상으로 합니다. 버전별 변경사항은 [CHANGELOG](CHANGELOG.md), 자세한 사용법은 [사용 가이드](docs/usage.md)를 참고하세요.
 
 이 플러그인은 Kakao 지도 타일 URL을 추출하거나 QGIS XYZ/TMS 배경지도로 등록하지 않습니다. WebEngine이 있으면 QGIS 도크에서, 없으면 외부 브라우저에서 Kakao Maps JavaScript API를 표시합니다. QGIS 캔버스 중심 좌표를 EPSG:4326으로 변환해 Kakao Map과 Roadview 중심으로 전달합니다.
 
@@ -22,7 +22,7 @@ Kakao Local 검색으로 장소명과 주소를 찾고, 검색 결과를 선택�
 
 ### 경로 탐색과 안내
 
-출발지, 도착지, 경유지, 경로 유형, 회피 옵션, 차량 설정을 입력해 Kakao Mobility 자동차 경로를 생성합니다. 결과는 QGIS 임시 경로 레이어, 출발지·도착지·경유지 핀, 순서별 안내 포인트로 표시됩니다. 탐색 후 핀은 API 안내 좌표를 기준으로 표시하며 원래 입력 좌표는 편집·재검색·이력 저장용으로 보존합니다. 현재 안내 레이어의 작은 출발·도착·경유 핀은 숨겨 큰 Route Points 핀과 겹치지 않도록 하고, 회전·유턴 안내는 유지합니다.
+출발지, 도착지, 경유지, 경로 유형, 회피 옵션, 차량 설정을 입력해 Kakao Mobility 자동차 경로를 생성합니다. 결과는 QGIS 임시 경로 레이어, 출발지·도착지·경유지 핀, 순서별 안내 포인트로 표시됩니다. 탐색 후 핀은 API 안내 좌표를 기준으로 표시하며 원래 입력 좌표는 편집·재검색·이력 저장용으로 보존합니다. 경로 결과에 경유지 안내가 없으면 해당 경유지 결과 핀은 표시하지 않습니다. 현재 안내 레이어의 작은 출발·도착·경유 핀은 숨겨 큰 Route Points 핀과 겹치지 않도록 하고, 회전·유턴 안내는 유지합니다.
 
 ![Kakao Mobility route result](docs/screenshots/07-route-result.png)
 

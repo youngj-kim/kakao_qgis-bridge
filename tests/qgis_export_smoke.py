@@ -64,7 +64,9 @@ def run(root):
         append(1)
         append(2)
         routes, guides = plugin.route_history_layer, plugin.guidance_history_layer
-        with tempfile.TemporaryDirectory(prefix="kakao-export-", ignore_cleanup_errors=True) as directory:
+        (root / "dist").mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="kakao-export-", dir=root / "dist",
+                                         ignore_cleanup_errors=True) as directory:
             output = Path(directory)
             for suffix, writer in ((".geojson", plugin._write_geojson_history_layer),
                                    (".shp", plugin._write_shapefile_history_layer)):
@@ -240,6 +242,34 @@ def run(root):
                     plugin._export_selected_route_histories(invalid)
                 require(not dialog.called, "invalid selection reached export dialog")
             checks.append("UI project boundaries: format, four saves, three overwrite prompts; invalid selections")
+
+            # A declared 128-width name holds 60 Korean chars (180 UTF-8 bytes)
+            # only if the real OGR writer expands its DBF width without loss.
+            from kakao_qgis_bridge.history_export_service import HistoryExportService
+            guide_name_index = guides.fields().indexOf("name")
+            named_guide = next(guides.getFeatures())
+            original_guide_name = named_guide["name"]
+            korean_name = "한" * 60
+            require(guides.dataProvider().changeAttributeValues({named_guide.id(): {
+                guide_name_index: korean_name,
+            }}), "60 Korean character name fixture failed")
+            name_specs = plugin._guidance_shapefile_fields()
+            require(next(s for s in name_specs if s["source"] == "name")["length"] == 128,
+                    "name field specification changed")
+            require("name" not in HistoryExportService.shapefile_loss_counts(guides, name_specs),
+                    "loss-free name should not be warned")
+            name_path = output / "korean-name.shp"
+            plugin._write_shapefile_history_layer(guides, name_path, "Point", "history", name_specs)
+            named_layer = reload(name_path, 6, None)
+            require(korean_name in [f["name"] for f in named_layer.getFeatures()],
+                    "60 Korean character name lost in DBF roundtrip")
+            require(named_layer.fields().field("name").length() >= len(korean_name.encode("utf-8")),
+                    "OGR failed to expand DBF byte width")
+            checks.append("SHP: name width 128 expands to at least 180 bytes; 60 Korean chars preserved")
+            del named_layer
+            require(guides.dataProvider().changeAttributeValues({named_guide.id(): {
+                guide_name_index: original_guide_name,
+            }}), "restore guide name fixture failed")
 
             # UTF-8 may exceed the DBF limit before reaching 254 characters.
             feature = next(routes.getFeatures())

@@ -57,4 +57,10 @@ $env:PYTHONDONTWRITEBYTECODE = '1'
 
 SHP는 기존 필드별 문자 수 제한과 254바이트 호환 상한을 함께 적용하고 UTF-8 문자 경계에서 자른다. 이는 형식의 손실을 없애는 처리가 아니다. 경유지 JSON이 잘리면 다시 가져올 때 기존 경고/복원 정책을 사용한다. 전체 문자열 보존에는 GeoPackage/GeoJSON이 적합하다. GDAL의 DBF 문자열 크기와 자동 확장 설명은 [공식 드라이버 문서](https://gdal.org/en/stable/drivers/vector/shapefile.html#field-sizes)를 참고한다.
 
+2026-10-12 추가 확인: QGIS 3.44.14/4.2.2의 실제 SHP writer로 안내 `name`(선언 폭 128)에
+한글 60자(UTF-8 180바이트)를 내보내고 다시 읽었다. 이름은 원문 그대로 보존되고 DBF 필드
+폭은 최소 180바이트로 자동 확장됐다. 이 경우 손실 집계에 `name`이 포함되지 않는 것은
+정상이며 바이트 상한을 128로 낮출 필요가 없다. 같은 검사에서 기존 254바이트 초과 문자열의
+절단·경고 및 원본 보존도 통과했다. 이 결과는 해당 Windows QGIS/GDAL 조합의 검증이다.
+
 `qgis_history_smoke.py`는 빈 GeoJSON 짝 파일과 재불러오기 안내가 서로 다른지, 기존 데이터·선택·활성 경로가 보존되는지 확인한다. `qgis_history_validation.py`의 잘린 SHP JSON과 레거시 형식 호환 검사는 계속 통과해야 한다.

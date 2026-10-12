@@ -1,5 +1,8 @@
 """Exercise both providers, selection, map overlays and cleanup in real QGIS."""
 import hashlib
+import json
+import math
+import os
 import sqlite3
 import sys
 import tempfile
@@ -10,7 +13,7 @@ from qgis.core import (Qgis, QgsApplication, QgsFeature, QgsGeometry, QgsPointXY
                        QgsProject, QgsVectorFileWriter, QgsVectorLayer)
 from qgis.gui import QgsMapCanvas
 from qgis.PyQt.QtWidgets import QMainWindow
-from kakao_qgis_bridge.route_comparison import read_routes, condition_message
+from kakao_qgis_bridge.route_comparison import read_routes, condition_message, display_layer, route_geometry
 from kakao_qgis_bridge.route_comparison_dialog import RouteComparisonDialog
 
 app = QgsApplication([], True)
@@ -20,8 +23,10 @@ font_path = Path("C:/Windows/Fonts/malgun.ttf")
 if font_path.exists():
     QFontDatabase.addApplicationFont(str(font_path))
     app.setFont(QFont("Malgun Gothic", 9))
+fixture_parent = Path(__file__).resolve().parents[1] / "dist"
+fixture_parent.mkdir(parents=True, exist_ok=True)
 fixture_directory = tempfile.TemporaryDirectory(
-    prefix="route-comparison-fixture-", dir=Path(__file__).resolve().parents[1] / "dist",
+    prefix="route-comparison-fixture-", dir=fixture_parent,
     ignore_cleanup_errors=True)
 if len(sys.argv) > 1:
     source = Path(sys.argv[1])
@@ -48,6 +53,65 @@ else:
 original = hashlib.sha256(source.read_bytes()).hexdigest()
 naver = read_routes(source)
 assert naver and all(row["provider"] == "네이버" for row in naver)
+assert all('geometry' not in row for row in naver), 'list must not retain every route geometry'
+assert all(set(row['values']) <= {'origin_lon', 'origin_lat', 'destination_lon', 'destination_lat',
+    'origin_name', 'destination_name', 'searched_at', 'history_id', 'distance_m', 'duration_s',
+    'waypoints_json'} for row in naver)
+assert not route_geometry(naver[0]).isEmpty()
+
+def waypoint_row(points):
+    return dict(naver[0], values=dict(naver[0]['values'], waypoints_json=json.dumps(points)))
+
+first = waypoint_row([dict(id='kakao:1', label='카카오', lon=127, lat=37)])
+near = waypoint_row([dict(id='naver:99', label='다른 이름', lon=127.00001, lat=37)])
+assert '경유지가 방문 순서별로 20m 이내' in condition_message(first, near)
+assert '개수 불일치' in condition_message(first, waypoint_row([]))
+ordered = [dict(lon=127, lat=37), dict(lon=128, lat=38)]
+assert '20m 초과' in condition_message(waypoint_row(ordered), waypoint_row(list(reversed(ordered))))
+equator = waypoint_row([dict(lon=0, lat=0)])
+for metres, expected in ((19.9, '20m 이내'), (20, '20m 이내'), (20.1, '20m 초과')):
+    point = dict(lon=0, lat=metres / 6371008.8 * 180 / math.pi)
+    assert expected in condition_message(equator, waypoint_row([point]))
+for invalid in (None, {}, [None], [dict(lon=True, lat=37)], [dict(lon=float('nan'), lat=37)],
+                [dict(lon=181, lat=37)], [dict(lon=127, lat=91)], [dict(lon=127)]):
+    assert '경유지 정보를 확인할 수 없습니다' in condition_message(first, waypoint_row(invalid))
+assert '두 경로 모두 경유지가 없습니다' in condition_message(waypoint_row([]), waypoint_row([]))
+for label, style in (('B로 이름을 바꾼 A', 'solid'), ('A로 이름을 바꾼 B', 'dash')):
+    overlay = display_layer(naver[0], label, '35,110,230', line_style=style)
+    assert overlay.customProperty('skipMemoryLayersCheck') == 1
+    assert overlay.renderer().symbol().symbolLayer(0).properties()['line_style'] == style
+del overlay
+# A changed source must not silently pair stale summary with a different geometry.
+changed_package = Path(fixture_directory.name) / 'changed.gpkg'
+changed_package.write_bytes(source.read_bytes())
+indexed = read_routes(changed_package)
+stat = changed_package.stat()
+os.utime(changed_package, ns=(stat.st_atime_ns, stat.st_mtime_ns + 2_000_000_000))
+try:
+    route_geometry(indexed[0])
+    raise AssertionError('changed package accepted')
+except ValueError as exc:
+    assert '다시 여세요' in str(exc)
+# Geometry validation is deferred until the selected route is displayed.
+empty_package = Path(fixture_directory.name) / 'empty-geometry.gpkg'
+empty_layer = QgsVectorLayer('LineString?crs=EPSG:4326&field=origin_lon:double'
+    '&field=origin_lat:double&field=destination_lon:double&field=destination_lat:double',
+    'empty fixture', 'memory')
+empty_feature = QgsFeature(empty_layer.fields())
+empty_feature.setAttributes([127, 37, 127.1, 37.1])
+assert empty_layer.dataProvider().addFeatures([empty_feature])[0]
+empty_options = QgsVectorFileWriter.SaveVectorOptions()
+empty_options.driverName = 'GPKG'
+empty_options.layerName = 'kakao_route_history'
+assert QgsVectorFileWriter.writeAsVectorFormatV3(empty_layer, str(empty_package),
+    QgsProject.instance().transformContext(), empty_options)[0] == QgsVectorFileWriter.NoError
+empty_rows = read_routes(empty_package)
+assert len(empty_rows) == 1 and 'geometry' not in empty_rows[0]
+try:
+    route_geometry(empty_rows[0])
+    raise AssertionError('empty geometry accepted')
+except ValueError as exc:
+    assert '유효한 경로 선' in str(exc)
 
 class Iface:
     def __init__(self):
@@ -105,6 +169,8 @@ with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[1], ignore
     dialog.show_routes()
     assert len(dialog.layer_ids) == 2
     assert all(QgsProject.instance().mapLayer(i).featureCount() == 1 for i in dialog.layer_ids)
+    assert all(QgsProject.instance().mapLayer(i).customProperty('skipMemoryLayersCheck') == 1
+               for i in dialog.layer_ids)
     dialog.show_routes()
     assert len(QgsProject.instance().mapLayers()) == 2
     dialog.refresh()

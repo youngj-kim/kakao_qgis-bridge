@@ -5,6 +5,8 @@ qgisMaximumVersion=4.99
 description=Kakao Map and Roadview viewer with bidirectional QGIS synchronization and Local search; dock or external browser depending on the QGIS runtime.
 version=1.2.1
 changelog=1.2.1
+    - Added read-only GPKG route comparison for Kakao/Naver histories, with ordered 20m waypoint matching and lazy selected-route geometry loading.
+    - Extracted route orchestration, shared viewer delivery and map/Roadview synchronization; cancel pending viewer work on project reset.
     - Added bidirectional QGIS/Kakao Map zoom synchronization while preserving the Roadview position during zoom-only changes.
     - Added cursor-anchored map wheel zoom and zoom controls.
     - Aligned route result/history pins with API guidance coordinates, preserving original inputs; hid duplicate current guidance pins.

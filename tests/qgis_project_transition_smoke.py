@@ -49,6 +49,7 @@ iface.mainWindow.return_value = None
 iface.mapCanvas.return_value = canvas
 project = QgsProject.instance()
 fixture = root / "dist" / f"project-boundary-{os.getpid()}.qgs"
+fixture.parent.mkdir(parents=True, exist_ok=True)
 blank = QgsProject()
 user_layer = QgsVectorLayer("Point?crs=EPSG:4326", "Kakao Mobility Route", "memory")
 blank.addMapLayer(user_layer)
@@ -113,7 +114,8 @@ try:
         plugin.mobility_client.succeeded.emit(result, old_request)
         plugin.mobility_client.failed.emit('late failure')
         assert plugin.route_history_layer.featureCount() == before_count and plugin.route_layer is None
-        assert '프로젝트가 변경' in plugin._last_route_status[1]
+        assert plugin._last_route_status is None
+        assert 'routeStatusChanged' not in state, 'project reset is not route failure'
         plugin.history_repository._operations.needs_recovery = False
         new_reply = FixtureReply(payload)
         with patch('kakao_qgis_bridge.plugin.kakao_rest_api_key', return_value='fixture-key'), \

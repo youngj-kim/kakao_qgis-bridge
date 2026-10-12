@@ -193,21 +193,20 @@ test("viewer reset releases busy state once per project epoch", () => {
   const calls = [];
   const context = vm.createContext({
     window: { clearTimeout() {} },
+    viewerSync: { reset() { calls.push(["sync"]); } },
+    setStatus() {},
     routeInputController: { reset() { context.routeBusy = false; calls.push(["inputs", true, false]); } },
     clearRoutePath: () => calls.push(["path"]),
     updateRouteControls: () => calls.push(["controls"]),
   });
   vm.runInContext(`var routeBusy = true; let lastProjectEpoch = null;
-    let mapZoomSyncTimer = 1; let expectedMapZoomLevel = 4;
     const reset = ${handler}; reset(1);`, context);
-  assert.equal(vm.runInContext('mapZoomSyncTimer', context), null);
-  assert.equal(vm.runInContext('expectedMapZoomLevel', context), null);
   assert.equal(vm.runInContext("routeBusy", context), false);
-  assert.deepEqual(calls, [["inputs", true, false], ["path"], ["controls"]]);
+  assert.deepEqual(calls, [["sync"], ["inputs", true, false], ["path"], ["controls"]]);
   vm.runInContext("routeBusy = true; reset(1);", context);
   assert.equal(vm.runInContext("routeBusy", context), true);
-  assert.equal(calls.length, 3);
+  assert.equal(calls.length, 4);
   vm.runInContext("reset(2);", context);
   assert.equal(vm.runInContext("routeBusy", context), false);
-  assert.equal(calls.length, 6);
+  assert.equal(calls.length, 8);
 });

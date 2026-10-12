@@ -6,6 +6,30 @@ items below are retained as past planning, not current tasks.
 
 ## Current 1.2.1 status — 2026-10-12
 
+### Release-review candidate (supersedes the earlier test ZIP below)
+
+- [x] Clean user-facing README; record development/test notes in refactoring-progress.md.
+- [x] Add versioned GPKG comparison changelog; ordered 20m waypoint matching, explicit styles and temporary-layer policy.
+- [x] Defer comparison geometry reading to selected routes and detect ordinary source-file changes.
+- [x] Make project reset informational, preserve Ctrl/Meta wheel defaults, remove unused imports and normalize text to LF.
+- [x] Keep the agreed missing-waypoint-result-pin omission policy unchanged.
+- [x] Run Python 75 / JavaScript 49 tests, syntax/compile checks and Bandit with no findings.
+- [ ] Manually install `dist/kakao_qgis_bridge-1.2.1-release-review-test.zip` in QGIS 3 and 4; confirm SDK interaction and browser Ctrl+wheel behavior.
+
+This ZIP replaces neither an earlier immutable test ZIP nor its historical confirmation.
+Source commit/push, CI and final official upload remain separate release steps.
+
+### Post-review structural candidate (not yet manually confirmed)
+
+- [x] Extract RouteController, ViewerAdapter and viewer_sync.js without changing file schemas or bridge contracts.
+- [x] Run Python 75 / JavaScript 48 tests and Bandit with no findings.
+- [x] Run QGIS 3.44.14/4.2.2 route-controller, pin, zoom, bridge, project, history/failure, export and display regressions.
+- [ ] Manually install `dist/kakao_qgis_bridge-1.2.1-refactoring-complete-test.zip` in QGIS 3 and 4 and confirm actual SDK interaction.
+- [ ] Commit/push this structural candidate and confirm its CI before final distribution.
+
+The following confirmations refer to the earlier fb5c261 code/clean-pins ZIP.
+They are not manual approval of this newer structural candidate. See refactoring-finalization.md.
+
 This section supersedes earlier candidate checklists. Code is pushed to main at
 fb5c261. No release/tag or official repository upload is implied by a source push.
 

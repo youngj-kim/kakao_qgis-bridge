@@ -129,8 +129,10 @@ class RouteComparisonDialog(QDialog):
             return
         self.clear_layers()
         try:
-            layers = [display_layer(row, f"{letter} · {row['provider']} 비교 경로", color)
-                      for row, letter, color in zip(rows, ("A", "B"), ("35,110,230", "240,120,25"))]
+            layers = [display_layer(row, f"{letter} · {row['provider']} 비교 경로", color,
+                                    line_style=style)
+                      for row, letter, color, style in zip(
+                          rows, ("A", "B"), ("35,110,230", "240,120,25"), ("solid", "dash"))]
             project = QgsProject.instance()
             canvas = self.iface.mapCanvas()
             extent = QgsRectangle()

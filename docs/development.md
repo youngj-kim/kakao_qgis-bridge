@@ -13,6 +13,8 @@ kakao_qgis_bridge/
   external_bridge.py
   mobility.py
   mobility_client.py
+  route_controller.py
+  viewer_adapter.py
   sync_controller.py
   style_factory.py
   display_layers.py
@@ -38,6 +40,7 @@ kakao_qgis_bridge/
     viewer_guidance.js
     viewer_history.js
     viewer_route_input.js
+    viewer_sync.js
 docs/
   usage.md
   screenshots/
@@ -162,6 +165,8 @@ Kakao JavaScript 키, Mobility REST API 키와 WebEngine 기준 URL을 관리하
 - 저장하지 않은 세션 이력은 플러그인을 해제하거나 QGIS를 종료하면 제거됩니다.
 
 ## 개발 기록과 검증 문서
+
+- [추가 리팩토링 정리와 업로드 전 확인](refactoring-finalization.md)
 
 - [날짜별 개발 이력](development-history.md)
 - [리팩토링 진행 기록](refactoring-progress.md)

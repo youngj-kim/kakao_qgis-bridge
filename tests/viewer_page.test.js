@@ -79,6 +79,7 @@ for (const mode of ["external", "dock"]) {
     h.node("route-origin-input").value = "old";
     h.signals.projectReset(1);
     assert.equal(h.node("route-origin-input").value, "");
+    assert.match(h.node("status").textContent, /프로젝트가 변경되어 현재 표시와 입력/);
     assert.equal(h.calls.includes("clearRoutePoints"), false, "Reset must not echo to bridge");
     h.node("route-origin-input").value = "new";
     h.signals.projectReset(1);

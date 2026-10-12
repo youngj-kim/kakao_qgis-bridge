@@ -1,6 +1,6 @@
 # Kakao QGIS Bridge
 
-현재 개발 버전은 **1.2.1 배포 후보**입니다. QGIS 3.34 이상과 QGIS 4 / Qt 6 환경을 대상으로 하는 Python 플러그인입니다. 자동 실행 검증은 Windows의 QGIS 3.44.14와 4.2.2에서 수행했습니다. 2026-10-12 사용자 테스트에서 검색·지도·로드뷰, 가져오기·내보내기, 양방향 줌과 중복 핀 수정의 정상 동작을 확인했습니다. 최소 선언 버전인 3.34는 실행 미검증이며 release/tag는 아직 생성하지 않았습니다. 누적 변경과 남은 제한은 [CHANGELOG.md](CHANGELOG.md), 배포 상태는 [배포 체크리스트](docs/release-checklist.md)를 참고하세요.
+QGIS와 Kakao Map·Roadview를 연결하는 플러그인입니다. QGIS 3.34 이상과 QGIS 4 / Qt 6 환경을 대상으로 합니다. 버전별 변경사항은 [CHANGELOG](CHANGELOG.md), 자세한 사용법은 [사용 가이드](docs/usage.md)를 참고하세요.
 
 이 플러그인은 Kakao 지도 타일 URL을 추출하거나 QGIS XYZ/TMS 배경지도로 등록하지 않습니다. WebEngine이 있으면 QGIS 도크에서, 없으면 외부 브라우저에서 Kakao Maps JavaScript API를 표시합니다. QGIS 캔버스 중심 좌표를 EPSG:4326으로 변환해 Kakao Map과 Roadview 중심으로 전달합니다.
 
@@ -170,8 +170,6 @@ http://localhost:9000
 
 ## 설치 방법
 
-배포는 GitHub 소스와 ZIP 기준으로 진행하며 공식 QGIS 플러그인 저장소 업로드는 계획하지 않습니다.
-
 배포 ZIP은 QGIS의 플러그인 관리자에서 `ZIP에서 설치`를 선택해 설치할 수 있습니다. 기존 버전에서 업데이트한 뒤에는 QGIS를 다시 시작하세요. ZIP 안의 `kakao_qgis_bridge/README.md`에도 키·포트 설정과 주요 제한을 포함합니다.
 
 QGIS 플러그인 디렉터리에 `kakao_qgis_bridge` 폴더를 복사하거나 심볼릭 링크로 연결합니다.
@@ -257,6 +255,7 @@ http://localhost:8082
 ## 개발 문서
 
 - [개발 구조와 메모](docs/development.md): 폴더 구조, 핵심 파일 역할, 구현 메모
+- [추가 리팩토링 및 검증 범위](docs/refactoring-finalization.md)
 - [날짜별 개발 이력](docs/development-history.md): 날짜별 작업 기록
 - [변경 기록](CHANGELOG.md): 버전별 주요 변경사항
 - [리팩토링 진행 기록](docs/refactoring-progress.md) · [배포 체크리스트](docs/release-checklist.md)

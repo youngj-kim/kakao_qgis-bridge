@@ -7,6 +7,7 @@ VIEWER_SCRIPTS = {
     "__VIEWER_GUIDANCE_SCRIPT__": "viewer_guidance.js",
     "__VIEWER_HISTORY_SCRIPT__": "viewer_history.js",
     "__VIEWER_ROUTE_INPUT_SCRIPT__": "viewer_route_input.js",
+    "__VIEWER_SYNC_SCRIPT__": "viewer_sync.js",
 }
 
 

@@ -4,13 +4,8 @@ const path = require("node:path");
 const vm = require("node:vm");
 const { test } = require("node:test");
 
-const html = fs.readFileSync(path.join(__dirname, "..", "kakao_qgis_bridge", "web", "kakao_viewer.html"), "utf8");
-// Execute the production functions with a fake SDK, without an API key/network.
-const functions = ["syncKakaoMapToQgis", "moveViewer", "updateRoadviewPosition", "configureMapWheel",
-  "mapMetersPerPixel", "applyMapResolution", "scheduleMapZoomSync"]
-  .map((name) => html.match(new RegExp(`    function ${name}\\([^]*?\\n    \\}`))[0])
-  .join("\n");
-const dragEnd = html.match(/addListener\(map, "dragend", (\(\) => \{[^]*?\n      \})\);/)[1];
+const source = fs.readFileSync(path.join(__dirname, "..", "kakao_qgis_bridge", "web", "viewer_sync.js"), "utf8");
+// Exercise the complete production controller, without an API key/network.
 
 function harness(connected = true) {
   const lookups = [];
@@ -26,14 +21,23 @@ function harness(connected = true) {
     map: { getCenter: () => current, setCenter: (position) => mapCenters.push(position) },
     marker: { setPosition(position) { markerPositions.push(position); } },
     roadviewClient: { getNearestPanoId(position, radius, callback) { lookups.push({ position, radius, callback }); } },
-    roadview: { setPanoId(panoId, position) { panos.push({ panoId, position }); } },
+    roadview: { setPanoId(panoId, position) { panos.push({ panoId, position }); },
+      getPanoId: () => panos.at(-1)?.panoId },
     qgisBridge: connected ? { moveQgisCenter: (lon, lat) => moves.push([lon, lat]) } : null,
     kakao: { maps: { LatLng: function (lat, lon) { return point(lon, lat); } } },
     setStatus: (message) => messages.push(message),
-    window: { clearTimeout() {} },
+    window: { clearTimeout() {}, setTimeout() { return 1; } },
   });
-  vm.runInContext(`let moveRequestId = 0; let programmaticRoadviewPanoId = null; let mapSyncTimer = null;
-    let expectedMapZoomLevel = null; let mapZoomSyncTimer = null;\n${functions}\nconst onDragEnd = ${dragEnd};`, context);
+  vm.runInContext(source + `
+    const controller = window.createKakaoViewerSync({
+      document: { getElementById: (...args) => document.getElementById(...args) },
+      timers: window, getMap: () => map, getMarker: () => marker,
+      getRoadview: () => roadview, getRoadviewClient: () => roadviewClient,
+      getMaps: () => kakao.maps, getBridge: () => qgisBridge, setStatus
+    });
+    const { moveViewer, syncKakaoMapToQgis, configureMapWheel, mapMetersPerPixel,
+      applyMapResolution, scheduleMapZoomSync, onMapDragEnd: onDragEnd } = controller;
+  `, context);
   return { context, lookups, panos, moves, mapCenters, messages, markerPositions,
     dragEnd() { vm.runInContext("onDragEnd()", context); },
     move(lon, lat) { current = point(lon, lat); },
@@ -49,7 +53,8 @@ test("map drag end updates local Roadview without waiting for a QGIS echo", () =
   assert.equal(h.mapCenters.length, 0, "Drag must not recenter the map");
   h.lookups[0].callback(123);
   assert.equal(h.panos[0].panoId, 123);
-  assert.equal(vm.runInContext("programmaticRoadviewPanoId", h.context), 123);
+  vm.runInContext("controller.onRoadviewPositionChanged()", h.context);
+  assert.equal(h.moves.length, 1, "programmatic panorama does not echo a movement");
 });
 
 test("local Roadview updates even when the QGIS bridge is not ready", () => {
@@ -135,9 +140,9 @@ function wheelHarness() {
   h.context.kakao.maps.Point = function (x, y) { this.x = x; this.y = y; };
   vm.runInContext("configureMapWheel(container)", h.context);
   return { h, changes, anchors, options, level: () => level,
-    wheel(deltaY, deltaMode = 0) {
+    wheel(deltaY, deltaMode = 0, modifiers = {}) {
       let prevented = false, stopped = false;
-      callback({ deltaY, deltaMode, clientX: 150, clientY: 75,
+      callback({ deltaY, deltaMode, clientX: 150, clientY: 75, ...modifiers,
         preventDefault() { prevented = true; },
         stopImmediatePropagation() { stopped = true; } });
       return [prevented, stopped];
@@ -159,6 +164,16 @@ test("plugin wheel zoom is cursor-anchored, single-handled, and never moves Road
   assert.equal(w.h.lookups.length, 0);
   assert.equal(w.h.moves.length, 0);
   assert.equal(w.h.markerPositions.length, 0);
+});
+
+test("Ctrl/Meta wheel preserves browser default and suppresses SDK map zoom", () => {
+  const w = wheelHarness();
+  assert.deepEqual(w.wheel(-120, 0, { ctrlKey: true }), [false, true]);
+  assert.deepEqual(w.wheel(-120, 0, { metaKey: true }), [false, true]);
+  assert.equal(w.level(), 4);
+  assert.equal(w.changes.length, 0);
+  assert.deepEqual(w.wheel(-120), [true, true]);
+  assert.equal(w.level(), 3);
 });
 
 test("wheel handles trackpad accumulation, delta units, bounds and invalid input", () => {
@@ -220,4 +235,48 @@ test('plugin wheel forwards final center and ground resolution, not a Roadview m
   assert.ok(Math.abs(z.zooms[0][2] - 0.44402) < 0.0001);
   assert.equal(z.w.h.moves.length, 0);
   assert.equal(z.w.h.lookups.length, 0);
+});
+
+test('project reset cancels pending zoom and rejects an old panorama callback', () => {
+  const z = zoomHarness();
+  vm.runInContext('moveViewer(128, 38)', z.w.h.context);
+  z.w.wheel(-120);
+  vm.runInContext('controller.reset()', z.w.h.context);
+  z.fire();
+  z.w.h.lookups[0].callback(999);
+  assert.equal(z.zooms.length, 0);
+  assert.equal(z.w.h.panos.length, 0);
+  z.w.h.dragEnd();
+  z.w.h.lookups[1].callback(1000);
+  assert.equal(z.w.h.panos[0].panoId, 1000, 'new work resumes after reset');
+});
+
+test('Roadview arrow movement updates map/marker and forwards position and direction', () => {
+  const h = harness(), timers = new Map(), states = [];
+  let next = 0;
+  h.context.window.setTimeout = (fn, delay) => { timers.set(++next, { fn, delay }); return next; };
+  h.context.window.clearTimeout = (id) => timers.delete(id);
+  h.context.roadview.getPanoId = () => 321;
+  h.context.roadview.getPosition = () => ({ getLng: () => 128, getLat: () => 38 });
+  h.context.roadview.getViewpoint = () => ({ pan: 30, tilt: 5, zoom: 1 });
+  h.context.qgisBridge.updateRoadviewState = (...args) => states.push(args);
+  vm.runInContext('controller.onRoadviewPositionChanged()', h.context);
+  assert.equal(h.mapCenters[0].getLng(), 128);
+  assert.equal(h.markerPositions[0].getLat(), 38);
+  assert.equal(h.lookups.length, 0);
+  for (const { fn } of timers.values()) fn();
+  assert.deepEqual(h.moves, [[128, 38]]);
+  assert.deepEqual(states, [[128, 38, 30, 5, 1, '321']]);
+});
+
+test('reset cancels pending drag and Roadview-state timers without publishing', () => {
+  const h = harness(), timers = new Map();
+  let next = 0;
+  h.context.window.setTimeout = (fn) => { timers.set(++next, fn); return next; };
+  h.context.window.clearTimeout = (id) => timers.delete(id);
+  vm.runInContext('controller.scheduleKakaoMapSync(); controller.scheduleRoadviewStateSync()', h.context);
+  assert.equal(timers.size, 2);
+  vm.runInContext('controller.reset()', h.context);
+  assert.equal(timers.size, 0);
+  assert.equal(h.moves.length, 0);
 });

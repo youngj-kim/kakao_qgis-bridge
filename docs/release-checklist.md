@@ -4,7 +4,32 @@ Distribution scope (2026-10-08): GitHub source and ZIP files. The user has
 excluded uploading to the official QGIS plugin repository. Historical upload
 items below are retained as past planning, not current tasks.
 
-## 1.2.1 candidate — 2026-10-08
+## Current 1.2.1 status — 2026-10-12
+
+This section supersedes earlier candidate checklists. Code is pushed to main at
+fb5c261. No release/tag or official repository upload is implied by a source push.
+
+- [x] Complete the planned history/export/layer/viewer controller refactoring.
+- [x] Add bidirectional QGIS/Kakao Map zoom while retaining Roadview position on zoom-only changes.
+- [x] Align route result/history pins with API guidance positions and hide duplicate current guidance pins.
+- [x] Run Python 69 and JavaScript 45 tests before the code commit.
+- [x] Run QGIS 3.44.14/4.2.2 zoom, bridge, route-pin and display-layer runtime checks.
+- [x] Record user confirmations: import/export, search/map/Roadview, route editing/search, bidirectional zoom and duplicate-pin cleanup. These were incremental checks, not a fresh exhaustive final-package matrix.
+- [x] Verify the tested clean-pins ZIP: 45 files, source agreement and settings/cache excluded.
+- [x] Commit/push the fixes: fb5c261, main.
+- [x] Update current README, usage, metadata changelog and validation documentation; retain historical records.
+- [ ] Confirm CI for fb5c261; the earlier CI result below does not establish this commit's status.
+- [ ] Validate declared minimum QGIS 3.34 in a runnable environment.
+- [ ] Confirm SDK terms/quota suitability; no approval is inferred from successful operation.
+- [ ] Confirm the final distribution ZIP after documentation updates; create release/tag only on request.
+
+User-confirmed installation ZIP: `dist/kakao_qgis_bridge-1.2.1-clean-pins-test.zip`.
+SHA-256: `39f7eb58db7d713a4807e24e1147b27393f50a6b33d42e21e35d3718412711f4`.
+This immutable test ZIP predates the documentation refresh; it has not been rebuilt
+or renamed as the final distribution package. Older ZIPs are retained.
+See route-points-fix.md and zoom-roadview-policy.md for scope and limitations.
+
+## Historical 1.2.1 candidate — 2026-10-08
 
 This section tracks the latest cumulative refactoring candidate. Earlier checked
 items below do not establish that this ZIP was manually installed and tested.

@@ -18,6 +18,8 @@ QGIS 4 또는 Qt WebEngine을 사용할 수 있는 환경에서는 `Kakao Map / 
 
 QGIS 캔버스를 이동하면 중심 좌표가 EPSG:4326으로 변환되어 Kakao Map과 Roadview로 전달됩니다. 반대로 Kakao 지도 드래그 또는 Roadview 이동도 QGIS 캔버스에 반영됩니다.
 
+QGIS와 Kakao Map은 확대·축소도 양방향으로 연동됩니다. 플러그인 지도 위에서 휠을 돌리거나 확대·축소 버튼을 사용할 수 있습니다. 줌만 할 때는 Roadview 촬영 위치와 위치 마커를 그대로 유지하고, 지도를 드래그하거나 Roadview 내부에서 이동하면 위치도 따라갑니다. 카카오의 가장 가까운 확대 단계로 맞추므로 임의 QGIS 축척과 정확히 일치하지 않을 수 있으며, 카카오 일반지도 단계 1~14와 QGIS 축척 잠금의 영향을 받습니다.
+
 ![Position synchronization](screenshots/03-position-sync.png)
 
 Roadview가 로드되면 현재 위치와 방향 정보가 상태바에 표시되고, QGIS의 `Kakao Roadview Position` 메모리 레이어도 갱신됩니다.
@@ -39,6 +41,8 @@ Roadview가 로드되면 현재 위치와 방향 정보가 상태바에 표시�
 ## 경로 결과
 
 `경로 생성`을 실행하면 QGIS에 `Kakao Mobility Route`, `Kakao Route Points`, `Kakao Route Guidance` 임시 레이어가 생성됩니다. Dock에는 경로 요약과 순서별 안내 목록이 표시됩니다.
+
+탐색 전 핀은 입력 좌표를, 성공 후에는 API 출발·도착·경유 안내 위치를 표시합니다. 출발·도착 안내가 없으면 경로 선형의 양 끝을 사용하고, 경유 안내가 없으면 해당 결과 핀은 생략합니다. 원래 입력 좌표는 편집·재검색·이력 저장용으로 보존됩니다. 현재 안내 레이어의 작은 출발·도착·경유 핀은 숨겨 큰 Route Points 핀과의 중복을 없애며 회전·유턴 안내와 원본 안내 데이터는 유지합니다. 이전 스크린샷과 핀 표시가 다를 수 있습니다.
 
 ![Route result](screenshots/07-route-result.png)
 

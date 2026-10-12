@@ -1,6 +1,6 @@
 # Kakao QGIS Bridge
 
-현재 개발 버전은 **1.2.1 배포 후보**입니다. QGIS 3.34 이상과 QGIS 4 / Qt 6 환경을 대상으로 하는 Python 플러그인입니다. 자동 실행 검증은 Windows의 QGIS 3.44.14와 4.2.2에서 수행했으며, 최소 선언 버전인 3.34와 최신 ZIP의 실제 Kakao SDK 화면은 별도 확인이 필요합니다. 누적 변경과 남은 제한은 [CHANGELOG.md](CHANGELOG.md)를 참고하세요.
+현재 개발 버전은 **1.2.1 배포 후보**입니다. QGIS 3.34 이상과 QGIS 4 / Qt 6 환경을 대상으로 하는 Python 플러그인입니다. 자동 실행 검증은 Windows의 QGIS 3.44.14와 4.2.2에서 수행했습니다. 2026-10-12 사용자 테스트에서 검색·지도·로드뷰, 가져오기·내보내기, 양방향 줌과 중복 핀 수정의 정상 동작을 확인했습니다. 최소 선언 버전인 3.34는 실행 미검증이며 release/tag는 아직 생성하지 않았습니다. 누적 변경과 남은 제한은 [CHANGELOG.md](CHANGELOG.md), 배포 상태는 [배포 체크리스트](docs/release-checklist.md)를 참고하세요.
 
 이 플러그인은 Kakao 지도 타일 URL을 추출하거나 QGIS XYZ/TMS 배경지도로 등록하지 않습니다. WebEngine이 있으면 QGIS 도크에서, 없으면 외부 브라우저에서 Kakao Maps JavaScript API를 표시합니다. QGIS 캔버스 중심 좌표를 EPSG:4326으로 변환해 Kakao Map과 Roadview 중심으로 전달합니다.
 
@@ -12,7 +12,7 @@
 
 ### 위치 동기화와 검색
 
-QGIS 캔버스, Kakao Map, Roadview는 같은 중심 좌표를 기준으로 동기화됩니다. Kakao 지도나 Roadview에서 위치를 바꾸면 QGIS 캔버스와 Roadview 위치 레이어도 함께 갱신됩니다.
+QGIS와 Kakao Map은 지도 이동과 확대·축소를 양방향으로 동기화합니다. 확대·축소만 할 때는 Roadview 촬영 위치와 위치 마커를 유지하며, 지도 드래그나 Roadview 내부 이동 시에는 위치도 따라갑니다. Kakao의 확대 단계가 이산적이므로 임의의 QGIS 축척과 완전히 일치하지 않을 수 있습니다.
 
 ![QGIS and Kakao position sync](docs/screenshots/03-position-sync.png)
 
@@ -22,7 +22,7 @@ Kakao Local 검색으로 장소명과 주소를 찾고, 검색 결과를 선택�
 
 ### 경로 탐색과 안내
 
-출발지, 도착지, 경유지, 경로 유형, 회피 옵션, 차량 설정을 입력해 Kakao Mobility 자동차 경로를 생성합니다. 결과는 QGIS 임시 경로 레이어, 출발지·도착지·경유지 핀, 순서별 안내 포인트로 표시됩니다.
+출발지, 도착지, 경유지, 경로 유형, 회피 옵션, 차량 설정을 입력해 Kakao Mobility 자동차 경로를 생성합니다. 결과는 QGIS 임시 경로 레이어, 출발지·도착지·경유지 핀, 순서별 안내 포인트로 표시됩니다. 탐색 후 핀은 API 안내 좌표를 기준으로 표시하며 원래 입력 좌표는 편집·재검색·이력 저장용으로 보존합니다. 현재 안내 레이어의 작은 출발·도착·경유 핀은 숨겨 큰 Route Points 핀과 겹치지 않도록 하고, 회전·유턴 안내는 유지합니다.
 
 ![Kakao Mobility route result](docs/screenshots/07-route-result.png)
 
@@ -52,7 +52,8 @@ QGIS 3처럼 Qt WebEngine을 사용할 수 없는 환경에서는 외부 브라�
 - Dock 내부 `QWebEngineView` 표시
 - Kakao Maps JavaScript API 지도 로드
 - QGIS 캔버스 중심 좌표를 EPSG:4326으로 변환
-- QGIS 기본 이동·확대·축소 후 중심 좌표를 Kakao 지도와 Roadview에 전달 (줌·축척 동기화는 미지원)
+- QGIS↔Kakao Map 양방향 이동·확대·축소 연동; 줌만 할 때 Roadview 촬영 위치 유지
+- Kakao 지도 위 마우스 휠과 확대·축소 버튼 지원; 실제 지상 거리/픽셀 기준으로 가장 가까운 확대 단계 선택
 - 변환 좌표를 WebEngine의 Kakao 지도/로드뷰로 전달
 - Kakao 지도 드래그 중 QGIS 캔버스 중심 실시간 역방향 동기화
 - Roadview 위치 이동 시 QGIS 캔버스 중심 역방향 동기화
@@ -89,11 +90,27 @@ kakao_qgis_bridge/
   style_factory.py
   display_layers.py
   history_repository.py
+  history_operations.py
+  history_import_service.py
+  history_export_service.py
+  history_ui_controller.py
+  history_export_controller.py
+  history_formats.py
+  history_values.py
+  history_validation.py
   history_export.py
+  viewer_page.py
+  route_comparison.py
+  route_comparison_dialog.py
+  compat.py
   settings.py
   settings.example.json
   web/
     kakao_viewer.html
+    viewer_search.js
+    viewer_guidance.js
+    viewer_history.js
+    viewer_route_input.js
 docs/
   usage.md
   screenshots/
@@ -116,11 +133,11 @@ QGIS와 직접 연결되는 메인 플러그인 코드입니다. 메뉴/툴바 �
 
 `kakao_qgis_bridge/dock_widget.py`
 
-QGIS 보조 창인 `QDockWidget`을 정의합니다. 내부에 `QWebEngineView`를 만들고, HTML 템플릿을 로드한 뒤 Python에서 JavaScript 함수 `window.centerKakaoMap(lon, lat)`를 호출합니다. `QWebChannel`을 통해 Kakao 지도 위치와 Roadview 위치·방향 정보를 다시 Python으로 전달합니다. Qt WebEngine을 사용할 수 없는 QGIS 3 환경에서는 외부 브라우저 연동 안내와 실행 버튼을 표시합니다.
+QGIS 보조 창인 `QDockWidget`을 정의합니다. 내부에 `QWebEngineView`를 만들고, 공통 조립 함수로 HTML을 로드한 뒤 `window.centerKakaoMap(lon, lat, updateRoadview, metersPerPixel)`로 중심·줌·로드뷰 갱신 정책을 전달합니다. `QWebChannel`을 통해 Kakao 지도 위치·줌과 Roadview 위치·방향 정보를 다시 Python으로 전달합니다. Qt WebEngine을 사용할 수 없는 QGIS 3 환경에서는 외부 브라우저 연동 안내와 실행 버튼을 표시합니다.
 
 `kakao_qgis_bridge/external_bridge.py`
 
-QGIS 3 외부 브라우저 연동 모드에서 사용하는 로컬 HTTP 브리지 서버입니다. `http://localhost:8081/`에서 Kakao Viewer HTML을 제공하고, 브라우저와 QGIS 사이의 중심 좌표, Roadview 상태, 경로 요청, 경로 이력 이벤트를 JSON API로 중계합니다.
+외부 브라우저 연동 모드에서 사용하는 로컬 HTTP 브리지 서버입니다. 기본 `http://localhost:8081/`에서 Kakao Viewer HTML을 제공하고 포트 사용 중에는 8082를 시도합니다. 브라우저와 QGIS 사이의 중심 좌표·지상 해상도, Roadview 상태, 경로 요청과 이력을 인증된 JSON API로 중계하며 상태 스냅샷과 이벤트 누락 복구를 지원합니다.
 
 `kakao_qgis_bridge/mobility.py`, `mobility_client.py`
 
@@ -128,7 +145,7 @@ QGIS 3 외부 브라우저 연동 모드에서 사용하는 로컬 HTTP 브리�
 
 `kakao_qgis_bridge/sync_controller.py`
 
-QGIS 캔버스와 Kakao Viewer 사이의 양방향 위치 동기화, 좌표계 변환, 역방향 동기화 가드를 담당합니다.
+QGIS 캔버스와 Kakao Viewer 사이의 양방향 위치·줌 동기화, 좌표계 변환과 지상 해상도 계산, 확대·축소/이동 구분 및 상태 비교 기반 역방향 동기화 가드를 담당합니다.
 
 `kakao_qgis_bridge/style_factory.py`
 
@@ -142,11 +159,15 @@ QGIS 캔버스와 Kakao Viewer 사이의 양방향 위치 동기화, 좌표계 �
 
 경로·안내 이력의 메모리 레이어와 조회·데이터 삭제는 저장소가 관리합니다. 이력 파일 읽기·필드 복원은 가져오기 서비스가, GeoPackage/GeoJSON/Shapefile/GPX 파일 작성과 출력 스타일 저장은 내보내기 서비스가 담당합니다. `history_formats.py`는 공통 파일명·필드 이름 대응, `history_export.py`는 GPX XML 작성기, `history_values.py`는 내보내기와 뷰어 복원이 공유하는 값 변환 함수입니다. 대화상자·이력 선택·활성 경로와 뷰어 갱신·결과 안내는 플러그인이 담당합니다.
 
+대화상자와 이력 UI의 세부 조정은 `history_ui_controller.py`와 `history_export_controller.py`에 분리되어 있습니다. 플러그인은 진입점과 지도 표시·웹 전달 콜백을 연결하며, 이력 컨트롤러는 목록·선택·복원·삭제를, 내보내기 컨트롤러는 형식·파일 선택·확인·완료 안내를 담당합니다.
+
 `history_operations.py`는 이력 변경 전 편집 가능 여부, 실제 반영 건수와 실패 후 보상 복구를 확인합니다. 복구되지 않은 부분 변경은 오류로 안내하고 추가 이력 변경을 차단하며, 보관용 내보내기는 유지합니다. 이는 두 레이어에 대한 DB 트랜잭션이 아닙니다.
 
 `kakao_qgis_bridge/web/kakao_viewer.html`
 
 Kakao Maps JavaScript API를 로드하는 실제 웹 뷰어입니다. Kakao Map, Marker, Roadview, RoadviewClient를 생성하고 QGIS에서 전달된 좌표를 기준으로 지도 중심과 로드뷰를 갱신합니다. 지도의 `drag`/`dragend`와 Roadview의 `position_changed` 이벤트가 발생하면 변경 위치를 QGIS로 전달합니다. `services.Places`와 `services.Geocoder`로 장소 및 주소를 검색합니다. 지도·로드뷰 배치 전환, 분할선 크기 조절, 전체화면 전환, 창 크기 변경 시 Kakao Map/Roadview relayout을 처리합니다.
+
+검색·안내·이력·경로 입력은 각각 `viewer_search.js`, `viewer_guidance.js`, `viewer_history.js`, `viewer_route_input.js`가 담당하며 `viewer_page.py`가 도크와 외부 브라우저에 같은 모듈을 inline 삽입합니다. HTML은 SDK 초기화·지도/로드뷰 이동·줌·레이아웃과 브리지 연결을 유지합니다.
 
 `kakao_qgis_bridge/settings.py`
 
@@ -338,7 +359,8 @@ http://localhost:8082
 - 연속 드래그 중에는 350ms 디바운스를 적용해 Kakao Roadview 요청이 과도하게 발생하지 않도록 합니다.
 - Python에서 JavaScript로 값을 넘길 때는 `QWebEnginePage.runJavaScript()`를 사용합니다.
 - JavaScript에서 Python으로 값을 넘길 때는 Qt의 `QWebChannel`을 사용합니다.
-- Kakao 지도 또는 Roadview에서 QGIS로 이동한 직후에는 600ms 동안 정방향 재전송을 막아 순환 동기화를 방지합니다.
+- 역방향 이동·줌을 적용한 뒤 중심·CRS·해상도가 예상 상태와 일치하는 반향만 억제합니다. 고정 600ms 차단 방식은 사용하지 않습니다.
+- 확대·축소는 지도 중심과 지상 해상도를 전달하되 Roadview 촬영 위치를 바꾸지 않습니다. 카카오 일반지도 확대 단계 1~14 밖의 축척은 맞출 수 없고 QGIS 축척 잠금은 존중합니다.
 - 과거 촬영본 목록은 JavaScript API에서 제공되지 않으므로 공식 카카오맵 Roadview 링크에서 선택합니다.
 - Local 검색은 이미 로드한 Kakao Maps JavaScript `services` 라이브러리를 사용하므로 별도의 REST API 키가 필요하지 않습니다.
 - Roadview 메모리 레이어는 EPSG:4326 포인트 1개를 반투명 원과 시야 부채꼴로 구성된 레이더형 마커로 표시합니다.
@@ -356,7 +378,7 @@ http://localhost:8082
 - 경로 입력창의 장소·주소 검색은 500ms 동안 입력이 멈추면 실행되며, 좌표 입력은 즉시 해석됩니다.
 - 경로 입력을 변경하거나 초기화하면 해당 위치 핀도 갱신됩니다.
 - 경로 안내 레이어는 EPSG:4326 Point이며 `sequence`, `section_no`, `guide_type`, `category`, `guidance`, 구간·누적 거리와 시간, `road_index` 속성을 저장합니다.
-- 안내 유형은 출발·도착·경유지·직진·좌회전·우회전·유턴·회전교차로·진출입·기타로 분류해 SVG 심볼로 표시합니다.
+- 안내 유형은 출발·도착·경유지·직진·좌회전·우회전·유턴·회전교차로·진출입·기타로 분류합니다. 현재 안내 레이어의 출발·도착·경유 범주는 렌더링만 꺼 중복 핀을 숨기며 피처·속성·안내 선택은 유지합니다. 독립적인 이력 레이어의 기본 스타일은 변경하지 않습니다.
 - 새 경로를 생성하면 이전 `Kakao Route Guidance` 레이어와 Dock 안내 목록을 현재 결과로 교체합니다.
 - 성공한 경로 검색은 표시용 레이어와 별도로 세션 이력에 누적되며 각 검색에는 UUID 형식의 `history_id`와 ISO 8601 검색 시각이 부여됩니다.
 - GeoPackage에는 EPSG:4326 LineString인 `kakao_route_history`와 Point인 `kakao_guidance_history`가 생성됩니다.
@@ -388,6 +410,8 @@ http://localhost:8082
 - 저장하지 않은 세션 이력은 플러그인을 해제하거나 QGIS를 종료하면 제거됩니다.
 
 ## 날짜별 개발 이력
+
+아래 내용은 각 날짜 당시의 기록입니다. 이후 구현된 저장·내보내기·동기화 기능의 현재 지원 여부는 위의 현재 단계와 CHANGELOG를 기준으로 확인하세요.
 
 ### 2026-06-24 - 기본 플러그인 구동
 

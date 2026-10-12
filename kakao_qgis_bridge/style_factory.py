@@ -77,8 +77,8 @@ class StyleFactory:
             }
         )
 
-    def route_guidance_renderer(self):
-        return QgsCategorizedSymbolRenderer(
+    def route_guidance_renderer(self, hide_route_pins=False):
+        renderer = QgsCategorizedSymbolRenderer(
             "category",
             [
                 QgsRendererCategory(
@@ -136,6 +136,12 @@ class StyleFactory:
                 ),
             ],
         )
+
+        if hide_route_pins:
+            for index, category in enumerate(renderer.categories()):
+                if category.value() in {"start", "destination", "waypoint"}:
+                    renderer.updateCategoryRenderState(index, False)
+        return renderer
 
     @staticmethod
     def guidance_symbol(filename):

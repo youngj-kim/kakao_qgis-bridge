@@ -98,7 +98,7 @@ EXTERNAL_BRIDGE_SCRIPT = r"""
     }
     // This tab already applied its own drag. Other tabs must follow it.
     if ((force || center.source !== clientId) && typeof window.centerKakaoMap === "function") {
-      window.centerKakaoMap(center.lon, center.lat);
+      window.centerKakaoMap(center.lon, center.lat, center.update_roadview !== false, center.meters_per_pixel);
     }
     lastCenterSequence = center.sequence;
   }
@@ -165,6 +165,9 @@ EXTERNAL_BRIDGE_SCRIPT = r"""
     loadRouteHistoryInput: signal("loadRouteHistoryInput"),
     moveQgisCenter(lon, lat) {
       post("/api/move-center", { lon, lat });
+    },
+    zoomQgisView(lon, lat, meters_per_pixel) {
+      post("/api/zoom-view", { lon, lat, meters_per_pixel });
     },
     updateRoadviewState(lon, lat, pan, tilt, zoom, pano_id) {
       post("/api/roadview-state", { lon, lat, pan, tilt, zoom, pano_id });
@@ -266,9 +269,10 @@ MAX_PENDING_EVENTS = 256
 MAX_PENDING_EVENT_BYTES = 1024 * 1024
 STATE_SIGNALS = {"routeStatusChanged", "routeGuidanceChanged", "routeHistoryChanged", "projectReset"}
 TRANSIENT_SIGNALS = {"loadRouteHistoryInput"}
-COALESCED_EVENTS = {"move_center", "roadview_state"}
+COALESCED_EVENTS = {"move_center", "roadview_state", "zoom_view"}
 EXTERNAL_EVENT_PATHS = {
     "/api/move-center": "move_center",
+    "/api/zoom-view": "zoom_view",
     "/api/roadview-state": "roadview_state",
     "/api/request-route": "request_route",
     "/api/route-point": "route_point",
@@ -376,7 +380,7 @@ class KakaoExternalBridgeServer:
         self._thread = None
         self._viewer_document = ""
 
-    def set_center(self, lon, lat, source=None):
+    def set_center(self, lon, lat, source=None, update_roadview=True, meters_per_pixel=None):
         with self._state_lock:
             self._outbound_sequence += 1
             self._center = {
@@ -384,6 +388,8 @@ class KakaoExternalBridgeServer:
                 "lat": float(lat),
                 "sequence": self._outbound_sequence,
                 "source": source,
+                "update_roadview": bool(update_roadview),
+                "meters_per_pixel": meters_per_pixel,
             }
             self._retain_event({
                 "sequence": self._outbound_sequence,

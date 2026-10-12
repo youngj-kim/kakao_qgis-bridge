@@ -8,6 +8,7 @@ from kakao_qgis_bridge.mobility import (
     guidance_category,
     normalize_route_request,
     parse_route_payload,
+    route_display_points,
     route_query_items,
     route_http_error_message,
     validate_rest_api_key,
@@ -15,6 +16,32 @@ from kakao_qgis_bridge.mobility import (
 
 
 class MobilityTests(unittest.TestCase):
+    def test_display_pins_use_result_guides_and_section_order(self):
+        waypoints = [{"id": "waypoint:edited", "lon": 128, "lat": 38},
+                     {"id": "waypoint:second", "lon": 129, "lat": 39}]
+        original = copy.deepcopy(waypoints)
+        guides = [dict(category=category, sequence=seq, section_no=section,
+                       longitude=lon, latitude=37.5)
+                  for category, seq, section, lon in (
+                      ("destination", 4, 3, 127.4), ("waypoint", 3, 2, 127.3),
+                      ("start", 1, 1, 127.1), ("waypoint", 2, 1, 127.2))]
+        self.assertEqual(route_display_points([(127, 37), (128, 38)], guides, waypoints),
+                         {"origin": (127.1, 37.5), "destination": (127.4, 37.5),
+                          "waypoint:edited": (127.2, 37.5),
+                          "waypoint:second": (127.3, 37.5)})
+        self.assertEqual(waypoints, original)
+
+    def test_display_pins_missing_guidance_never_reuse_input_coordinates(self):
+        path = [(127, 37), (127.1, 37.1), (127, 37)]  # loop: endpoints coincide
+        waypoints = [{"lon": 128, "lat": 38}, {"lon": 129, "lat": 39}]
+        guides = [dict(category="waypoint", sequence=3, section_no=2,
+                       longitude=127.1, latitude=37.1),
+                  dict(category="start", sequence=1, longitude=float("nan"), latitude=37)]
+        self.assertEqual(route_display_points(path, guides, waypoints),
+                         {"origin": (127, 37), "destination": (127, 37),
+                          "waypoint:2": (127.1, 37.1)})
+        self.assertEqual(route_display_points([], guides, waypoints), {})
+
     @staticmethod
     def valid_payload():
         return {

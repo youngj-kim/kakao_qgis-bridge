@@ -1140,6 +1140,8 @@ __VIEWER_ROUTE_INPUT_SCRIPT__
     let stableRelayoutTimers = [];
     let lastRoadviewSize = "";
     let programmaticRoadviewPanoId = null;
+    let expectedMapZoomLevel = null;
+    let mapZoomSyncTimer = null;
     const guidanceController = window.createKakaoGuidanceController({
       document, routeGuidanceList, routeGuidanceSummaryText, routeGuidanceOverview,
       routeGuidancePanel, routeGuidanceToggle,
@@ -1387,6 +1389,9 @@ __VIEWER_ROUTE_INPUT_SCRIPT__
         qgisBridge.projectReset.connect((epoch) => {
           if (epoch === lastProjectEpoch) return;
           lastProjectEpoch = epoch;
+          window.clearTimeout(mapZoomSyncTimer);
+          mapZoomSyncTimer = null;
+          expectedMapZoomLevel = null;
           routeInputController.reset();
           clearRoutePath();
           updateRouteControls();
@@ -1542,13 +1547,104 @@ __VIEWER_ROUTE_INPUT_SCRIPT__
       });
     }
 
+    function mapMetersPerPixel() {
+      const container = document.getElementById("map");
+      const projection = map.getProjection();
+      const x = container.clientWidth / 2;
+      const y = container.clientHeight / 2;
+      const first = projection.coordsFromContainerPoint(new kakao.maps.Point(x - 64, y));
+      const last = projection.coordsFromContainerPoint(new kakao.maps.Point(x + 64, y));
+      const radians = (degrees) => degrees * Math.PI / 180;
+      const phi1 = radians(first.getLat()), phi2 = radians(last.getLat());
+      const a = Math.sin((phi2 - phi1) / 2) ** 2 + Math.cos(phi1) * Math.cos(phi2)
+        * Math.sin(radians(last.getLng() - first.getLng()) / 2) ** 2;
+      return 6371008.8 * 2 * Math.asin(Math.sqrt(Math.min(1, Math.max(0, a)))) / 128;
+    }
+
+    function applyMapResolution(metersPerPixel) {
+      if (!Number.isFinite(metersPerPixel) || metersPerPixel <= 0) {
+        return;
+      }
+      const current = mapMetersPerPixel();
+      if (!Number.isFinite(current) || current <= 0) {
+        return;
+      }
+      window.clearTimeout(mapZoomSyncTimer);
+      mapZoomSyncTimer = null;
+      const level = Math.max(1, Math.min(14,
+        map.getLevel() + Math.round(Math.log2(metersPerPixel / current))));
+      if (level !== map.getLevel()) {
+        expectedMapZoomLevel = level;
+        map.setLevel(level, { animate: false });
+      }
+    }
+
+    function scheduleMapZoomSync() {
+      if (expectedMapZoomLevel === map.getLevel()) {
+        expectedMapZoomLevel = null;
+        return;
+      }
+      expectedMapZoomLevel = null;
+      window.clearTimeout(mapZoomSyncTimer);
+      mapZoomSyncTimer = window.setTimeout(() => {
+        mapZoomSyncTimer = null;
+        if (!qgisBridge || typeof qgisBridge.zoomQgisView !== "function") {
+          return;
+        }
+        const position = map.getCenter();
+        const resolution = mapMetersPerPixel();
+        if (Number.isFinite(resolution) && resolution > 0) {
+          qgisBridge.zoomQgisView(position.getLng(), position.getLat(), resolution);
+        }
+      }, 150);
+    }
+
+    function configureMapWheel(container) {
+      let accumulated = 0;
+      let lastWheelAt = 0;
+      // Register before SDK construction, so its native handler cannot also
+      // zoom the same wheel event. Touch gestures still use the SDK normally.
+      container.addEventListener("wheel", (event) => {
+        if (!map || !Number.isFinite(event.deltaY) || event.deltaY === 0) {
+          return;
+        }
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const now = Date.now();
+        if (now - lastWheelAt > 200 || Math.sign(accumulated) !== Math.sign(event.deltaY)) {
+          accumulated = 0;
+        }
+        lastWheelAt = now;
+        const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? container.clientHeight : 1;
+        accumulated += event.deltaY * unit;
+        if (Math.abs(accumulated) < 40) {
+          return;
+        }
+        const level = Math.max(1, Math.min(14, map.getLevel() + Math.sign(accumulated)));
+        accumulated = 0;
+        if (level === map.getLevel()) {
+          return;
+        }
+        const rect = container.getBoundingClientRect();
+        const anchor = map.getProjection().coordsFromContainerPoint(
+          new kakao.maps.Point(event.clientX - rect.left, event.clientY - rect.top)
+        );
+        map.setLevel(level, { anchor, animate: false });
+      }, { capture: true, passive: false });
+    }
+
     function initViewer() {
       const center = new kakao.maps.LatLng(defaultCenter.lat, defaultCenter.lon);
-
-      map = new kakao.maps.Map(document.getElementById("map"), {
+      const mapContainer = document.getElementById("map");
+      configureMapWheel(mapContainer);
+      map = new kakao.maps.Map(mapContainer, {
         center,
-        level: 4
+        level: 4,
+        scrollwheel: true
       });
+      map.setZoomable(true);
+      map.addControl(new kakao.maps.ZoomControl(), kakao.maps.ControlPosition.TOPRIGHT);
+      kakao.maps.event.addListener(map, "zoom_changed", scheduleMapZoomSync);
 
       marker = new kakao.maps.Marker({
         map,
@@ -1637,6 +1733,7 @@ __VIEWER_ROUTE_INPUT_SCRIPT__
 
       if (pendingCenter) {
         moveViewer(pendingCenter.lon, pendingCenter.lat);
+        applyMapResolution(pendingCenter.metersPerPixel);
         pendingCenter = null;
       }
     }
@@ -1781,9 +1878,15 @@ __VIEWER_ROUTE_INPUT_SCRIPT__
       setStatus(historyController.count ? "경로 이력을 열었습니다." : "경로 이력을 확인하고 있습니다.");
     });
 
-    function moveViewer(lon, lat) {
+    function moveViewer(lon, lat, updateRoadview = true) {
       const position = new kakao.maps.LatLng(lat, lon);
       map.setCenter(position);
+      if (!updateRoadview) {
+        // Keep the panorama marker at its actual position, not the zoom center.
+        // Also reject a lookup that was still pending before this zoom.
+        ++moveRequestId;
+        return;
+      }
       marker.setPosition(position);
       updateRoadviewPosition(position);
     }
@@ -1809,19 +1912,20 @@ __VIEWER_ROUTE_INPUT_SCRIPT__
 
     window.setKakaoBridgeStatus = setStatus;
 
-    window.centerKakaoMap = function centerKakaoMap(lon, lat) {
+    window.centerKakaoMap = function centerKakaoMap(lon, lat, updateRoadview = true, metersPerPixel = null) {
       if (!Number.isFinite(lon) || !Number.isFinite(lat)) {
         setStatus("QGIS에서 받은 좌표가 올바르지 않습니다.");
         return;
       }
 
       if (!map || !roadviewClient) {
-        pendingCenter = { lon, lat };
+        pendingCenter = { lon, lat, metersPerPixel };
         setStatus(`카카오 API 준비 대기 중 · EPSG:4326 ${lat.toFixed(6)}, ${lon.toFixed(6)}`);
         return;
       }
 
-      moveViewer(lon, lat);
+      moveViewer(lon, lat, updateRoadview);
+      applyMapResolution(metersPerPixel);
     };
 
     window.loadRouteHistoryInput = (payload) => routeInputController.load(payload);

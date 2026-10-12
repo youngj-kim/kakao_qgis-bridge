@@ -51,6 +51,7 @@ from .mobility import (
     MAX_ROUTE_WAYPOINTS,
     RouteValidationError,
     normalize_route_request,
+    route_display_points,
     route_result_summary,
 )
 from .mobility_client import MobilityClient
@@ -140,7 +141,11 @@ class KakaoQgisBridgePlugin:
             self.iface,
             self._has_canvas_sync_target,
         )
-        self.sync_controller.syncRequested.connect(self._sync_canvas_center)
+        self.sync_controller.syncRequested.connect(
+            lambda: self._sync_canvas_center(
+                update_roadview=self.sync_controller.update_roadview
+            )
+        )
         self.external_bridge_server = None
         self._processing_external_bridge_events = False
         self.external_bridge_timer = QTimer()
@@ -589,6 +594,7 @@ class KakaoQgisBridgePlugin:
 
         self.dock = KakaoMapDockWidget(self.iface.mainWindow())
         self.dock.centerRequested.connect(self._handle_dock_viewer_moved)
+        self.dock.zoomRequested.connect(self._handle_dock_viewer_zoomed)
         self.dock.roadviewStateChanged.connect(self._update_roadview_layer)
         self.dock.routeRequested.connect(self._request_route)
         self.dock.routePointChanged.connect(self._set_route_point)
@@ -708,6 +714,13 @@ class KakaoQgisBridgePlugin:
                         float(payload.get("lat")),
                         source=event.get("source"),
                     )
+                elif event_type == "zoom_view":
+                    self._handle_viewer_moved(
+                        float(payload.get("lon")), float(payload.get("lat")),
+                        source=event.get("source"),
+                        meters_per_pixel=float(payload.get("meters_per_pixel")),
+                        update_roadview=False,
+                    )
                 elif event_type == "roadview_state":
                     self._update_roadview_layer(
                         float(payload.get("lon")),
@@ -812,7 +825,7 @@ class KakaoQgisBridgePlugin:
     def _schedule_canvas_sync(self, *_args):
         self.sync_controller.schedule()
 
-    def _sync_canvas_center(self, source=None):
+    def _sync_canvas_center(self, source=None, update_roadview=True):
         if self._project_transitioning:
             return
         if not self._has_canvas_sync_target():
@@ -829,11 +842,19 @@ class KakaoQgisBridgePlugin:
             )
             return
 
+        try:
+            resolution = self.sync_controller.meters_per_pixel()
+        except Exception as exc:
+            resolution = None
+            QgsMessageLog.logMessage(str(exc), LOG_TAG, MSG_WARNING)
         if source is not _DOCK_SYNC_SOURCE and self.dock is not None and self.dock.isVisible():
-            self.dock.set_center(lon, lat)
+            self.dock.set_center(lon, lat, update_roadview=update_roadview,
+                                 meters_per_pixel=resolution)
         if self.external_bridge_server is not None:
             self.external_bridge_server.set_center(
                 lon, lat, source=None if source is _DOCK_SYNC_SOURCE else source,
+                update_roadview=update_roadview,
+                meters_per_pixel=resolution,
             )
 
     def _has_canvas_sync_target(self):
@@ -843,7 +864,12 @@ class KakaoQgisBridgePlugin:
     def _handle_dock_viewer_moved(self, lon, lat):
         self._handle_viewer_moved(lon, lat, source=_DOCK_SYNC_SOURCE)
 
-    def _handle_viewer_moved(self, lon, lat, source=None):
+    def _handle_dock_viewer_zoomed(self, lon, lat, meters_per_pixel):
+        self._handle_viewer_moved(lon, lat, source=_DOCK_SYNC_SOURCE,
+                                 meters_per_pixel=meters_per_pixel, update_roadview=False)
+
+    def _handle_viewer_moved(self, lon, lat, source=None, meters_per_pixel=None,
+                             update_roadview=True):
         if self._project_transitioning:
             return
         if not math.isfinite(lon) or not math.isfinite(lat):
@@ -851,9 +877,16 @@ class KakaoQgisBridgePlugin:
         if not -180.0 <= lon <= 180.0 or not -90.0 <= lat <= 90.0:
             return
 
+        if meters_per_pixel is not None and (
+            not math.isfinite(meters_per_pixel) or not 0.001 <= meters_per_pixel <= 100000
+        ):
+            return
+
         canvas = self.iface.mapCanvas()
         try:
             center = self.sync_controller.from_wgs84(lon, lat)
+            current_resolution = (self.sync_controller.meters_per_pixel(center)
+                                  if meters_per_pixel is not None else None)
         except Exception as exc:
             QgsMessageLog.logMessage(str(exc), LOG_TAG, MSG_WARNING)
             self.iface.messageBar().pushWarning(
@@ -864,9 +897,12 @@ class KakaoQgisBridgePlugin:
 
         self.sync_controller.begin_reverse_sync(center)
         canvas.setCenter(center)
+        if meters_per_pixel is not None:
+            canvas.zoomByFactor(meters_per_pixel / current_resolution, center)
+        self.sync_controller.begin_reverse_sync(canvas.center())
         canvas.refresh()
         # The canvas echo is suppressed, but all other viewers still need this move.
-        self._sync_canvas_center(source=source)
+        self._sync_canvas_center(source=source, update_roadview=update_roadview)
 
     def _update_roadview_layer(self, lon, lat, pan, tilt, zoom, pano_id):
         if self._project_transitioning:
@@ -1019,6 +1055,7 @@ class KakaoQgisBridgePlugin:
             "guides": guides,
         }
         self._create_route_guidance_layer(guides)
+        self._show_result_route_points(points, guides, waypoints)
         self.active_route_history_id = None
         history_saved = self._append_route_history(
             history_id=history_id,
@@ -1309,6 +1346,9 @@ class KakaoQgisBridgePlugin:
         else:
             self._zoom_to_geometry(route_feature.geometry())
         self._create_route_guidance_layer(guidance_payload["guides"])
+        self._show_result_route_points(
+            points, guidance_payload["guides"], guidance_payload["waypoints"]
+        )
 
         center = route_feature.geometry().centroid().asPoint()
         if self.dock is not None:
@@ -1725,6 +1765,16 @@ class KakaoQgisBridgePlugin:
             "guides": [],
         }
         self._set_route_guidance(payload)
+
+    def _show_result_route_points(self, points, guides, waypoints):
+        resolved = route_display_points(
+            [(point.x(), point.y()) for point in points], guides, waypoints
+        )
+        for point_id in list(self.route_point_feature_ids):
+            if point_id not in resolved:
+                self._clear_route_point(point_id)
+        for point_id, (lon, lat) in resolved.items():
+            self._set_route_point(point_id, lon, lat)
 
     def _set_route_point(self, point_id, lon, lat):
         if self._project_transitioning:

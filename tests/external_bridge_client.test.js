@@ -12,12 +12,18 @@ function harness() {
   const timers = new Map();
   const calls = [];
   const centers = [];
+  const centerOptions = [];
+  const resolutions = [];
   const messages = [];
   let timerId = 0;
   const queue = [];
   const window = {
     crypto: { randomUUID: () => "tab-a" },
-    centerKakaoMap: (lon, lat) => centers.push([lon, lat]),
+    centerKakaoMap: (lon, lat, updateRoadview, metersPerPixel) => {
+      centers.push([lon, lat]);
+      centerOptions.push(updateRoadview);
+      resolutions.push(metersPerPixel);
+    },
     setKakaoBridgeStatus: (message) => messages.push(message),
   };
   const context = {
@@ -35,7 +41,7 @@ function harness() {
   vm.runInNewContext(source, context);
   const bridge = window.kakaoExternalBridge;
   return {
-    bridge, calls, centers, messages, timers,
+    bridge, calls, centers, messages, timers, centerOptions, resolutions,
     respond(payload, status = 200) {
       queue.push({ ok: status < 400, status, json: async () => payload });
     },
@@ -84,6 +90,32 @@ test("tab ignores its own movement but follows another tab", async () => {
   await h.tick(400);
   assert.deepEqual(h.centers, [[128, 38]]);
   assert.equal(h.calls[1].options.headers["X-Kakao-Bridge-Client"], "tab-a");
+});
+
+test("zoom policy survives both snapshot restoration and live center events", async () => {
+  const h = harness();
+  h.respond({ sequence: 1, signals: {}, center: {
+    sequence: 1, lon: 127, lat: 37.5, update_roadview: false, meters_per_pixel: 2,
+  } });
+  h.bridge.start();
+  await h.tick(0);
+  assert.deepEqual(h.centerOptions, [false]);
+  assert.deepEqual(h.resolutions, [2]);
+  h.respond({ events: [{ sequence: 2, signal: "centerChanged", center: {
+    sequence: 2, lon: 128, lat: 38, update_roadview: false,
+  } }, { sequence: 3, signal: "centerChanged", center: {
+    sequence: 3, lon: 129, lat: 39,
+  } }] });
+  await h.tick(400);
+  assert.deepEqual(h.centerOptions, [false, false, true]);
+});
+
+test('external zoom posts center and ground resolution through the dedicated endpoint', () => {
+  const h = harness();
+  h.respond({ ok: true });
+  h.bridge.zoomQgisView(127, 37.5, 2);
+  assert.equal(h.calls[0].url, '/api/zoom-view');
+  assert.deepEqual(JSON.parse(h.calls[0].options.body), { lon: 127, lat: 37.5, meters_per_pixel: 2 });
 });
 
 test("event gap restores snapshot without replaying old commands", async () => {
@@ -160,11 +192,16 @@ test("viewer reset releases busy state once per project epoch", () => {
   const handler = html.match(/qgisBridge.projectReset.connect\((\(epoch\) => \{[^]*?\n        \})\);/)[1];
   const calls = [];
   const context = vm.createContext({
+    window: { clearTimeout() {} },
     routeInputController: { reset() { context.routeBusy = false; calls.push(["inputs", true, false]); } },
     clearRoutePath: () => calls.push(["path"]),
     updateRouteControls: () => calls.push(["controls"]),
   });
-  vm.runInContext(`var routeBusy = true; let lastProjectEpoch = null; const reset = ${handler}; reset(1);`, context);
+  vm.runInContext(`var routeBusy = true; let lastProjectEpoch = null;
+    let mapZoomSyncTimer = 1; let expectedMapZoomLevel = 4;
+    const reset = ${handler}; reset(1);`, context);
+  assert.equal(vm.runInContext('mapZoomSyncTimer', context), null);
+  assert.equal(vm.runInContext('expectedMapZoomLevel', context), null);
   assert.equal(vm.runInContext("routeBusy", context), false);
   assert.deepEqual(calls, [["inputs", true, false], ["path"], ["controls"]]);
   vm.runInContext("routeBusy = true; reset(1);", context);

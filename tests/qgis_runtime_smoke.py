@@ -200,7 +200,7 @@ def run(repo_root):
             def isVisible(self):
                 return self.visible
 
-            def set_center(self, lon, lat):
+            def set_center(self, lon, lat, **kwargs):
                 self.centers.append((lon, lat))
 
             def hide(self):

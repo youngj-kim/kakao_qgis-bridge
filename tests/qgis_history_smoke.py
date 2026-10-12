@@ -54,7 +54,7 @@ def run(root):
     class Dock:
         web_view = None
 
-        def set_center(self, *args):
+        def set_center(self, *args, **kwargs):
             self.center = args
 
         def set_route_history(self, payload):

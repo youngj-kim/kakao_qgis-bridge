@@ -31,6 +31,17 @@ from kakao_qgis_bridge import external_bridge
 
 
 class ExternalBridgeServerTest(unittest.TestCase):
+    def test_zoom_event_and_ground_resolution_snapshot_over_http(self):
+        payload = dict(lon=127, lat=37.5, meters_per_pixel=2.0)
+        self.assertEqual(self.request('/api/zoom-view', token=self.token, payload=payload)[0], 200)
+        events = self.server.drain_events()
+        self.assertEqual(events[0]['type'], 'zoom_view')
+        self.assertEqual(events[0]['payload'], payload)
+        self.server.set_center(127, 37.5, update_roadview=False, meters_per_pixel=2)
+        state = json.loads(self.request('/api/state', token=self.token)[1])
+        self.assertEqual(state['center']['meters_per_pixel'], 2)
+        self.assertFalse(state['center']['update_roadview'])
+
     def setUp(self):
         self.server = KakaoExternalBridgeServer(port=0)
         self.viewer_url = self.server.start()

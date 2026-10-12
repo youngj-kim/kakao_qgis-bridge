@@ -409,6 +409,38 @@ def parse_route_payload(payload):
     )
 
 
+def route_display_points(points, guides, waypoints):
+    """Resolve display pins from the result, never from the request coordinates.
+
+    Waypoint guides belong to the incoming section (1-based). Do not snap to
+    the nearest vertex: loops and repeated visits can select the wrong leg.
+    Missing waypoint guidance is omitted rather than inventing a location.
+    """
+    if len(points) < 2:
+        return {}
+    resolved = {"origin": tuple(points[0]), "destination": tuple(points[-1])}
+    ordered = sorted(guides, key=lambda guide: guide.get("sequence", 0))
+    for guide in ordered:
+        category = guide.get("category")
+        if category not in ("start", "destination", "waypoint"):
+            continue
+        try:
+            coordinate = _coordinate(guide["longitude"], guide["latitude"], "안내 지점")
+        except (KeyError, RouteValidationError):
+            continue
+        if category == "start":
+            resolved["origin"] = coordinate
+        elif category == "destination":
+            resolved["destination"] = coordinate
+        else:
+            section = guide.get("section_no")
+            if not isinstance(section, int) or not 1 <= section <= len(waypoints):
+                continue
+            point_id = waypoints[section - 1].get("id") or f"waypoint:{section}"
+            resolved[point_id] = coordinate
+    return resolved
+
+
 def route_result_summary(distance, duration, car_type, guidance_count):
     duration_minutes = max(1, round(duration / 60))
     distance_km = distance / 1000

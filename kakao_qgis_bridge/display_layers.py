@@ -193,7 +193,7 @@ class DisplayLayerManager:
         )
         layer = QgsVectorLayer(uri, "Kakao Route Guidance", "memory")
         layer.setCustomProperty("skipMemoryLayersCheck", 1)
-        layer.setRenderer(self.style_factory.route_guidance_renderer())
+        layer.setRenderer(self.style_factory.route_guidance_renderer(hide_route_pins=True))
 
         provider = layer.dataProvider()
         feature_ids = {}

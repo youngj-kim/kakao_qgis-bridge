@@ -77,6 +77,7 @@ def web_runtime_diagnostic():
 class KakaoWebBridge(QObject):
     projectReset = pyqtSignal(int)
     centerRequested = pyqtSignal(float, float)
+    zoomRequested = pyqtSignal(float, float, float)
     roadviewStateChanged = pyqtSignal(float, float, float, float, float, str)
     routeRequested = pyqtSignal(
         float, float, float, float, str, str, str, str, str, str
@@ -102,6 +103,10 @@ class KakaoWebBridge(QObject):
     @pyqtSlot(float, float)
     def moveQgisCenter(self, lon, lat):
         self.centerRequested.emit(lon, lat)
+
+    @pyqtSlot(float, float, float)
+    def zoomQgisView(self, lon, lat, meters_per_pixel):
+        self.zoomRequested.emit(lon, lat, meters_per_pixel)
 
     @pyqtSlot(float, float)
     def openKakaoRoadview(self, lon, lat):
@@ -213,6 +218,7 @@ class KakaoWebBridge(QObject):
 
 class KakaoMapDockWidget(QDockWidget):
     centerRequested = pyqtSignal(float, float)
+    zoomRequested = pyqtSignal(float, float, float)
     roadviewStateChanged = pyqtSignal(float, float, float, float, float, str)
     routeRequested = pyqtSignal(
         float, float, float, float, str, str, str, str, str, str
@@ -264,14 +270,16 @@ class KakaoMapDockWidget(QDockWidget):
         self._escape_shortcut = QShortcut(QKeySequence(escape_key), self)
         self._escape_shortcut.activated.connect(self.exit_full_screen)
 
-    def set_center(self, lon, lat):
+    def set_center(self, lon, lat, update_roadview=True, meters_per_pixel=None):
         if self.web_view is None:
             self._set_fallback_center(lon, lat)
             return
 
-        script = "window.centerKakaoMap({lon}, {lat});".format(
+        script = "window.centerKakaoMap({lon}, {lat}, {update_roadview}, {resolution});".format(
             lon=json.dumps(float(lon)),
             lat=json.dumps(float(lat)),
+            update_roadview=json.dumps(bool(update_roadview)),
+            resolution=json.dumps(meters_per_pixel),
         )
         self.web_view.page().runJavaScript(script)
 
@@ -326,6 +334,7 @@ class KakaoMapDockWidget(QDockWidget):
     def _configure_web_channel(self):
         self.web_bridge = KakaoWebBridge(self)
         self.web_bridge.centerRequested.connect(self.centerRequested.emit)
+        self.web_bridge.zoomRequested.connect(self.zoomRequested.emit)
         self.web_bridge.roadviewStateChanged.connect(
             self.roadviewStateChanged.emit
         )

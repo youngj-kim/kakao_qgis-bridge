@@ -53,6 +53,9 @@ class Point:
     def y(self):
         return self.coords[1]
 
+    def __eq__(self, other):
+        return isinstance(other, Point) and self.coords == other.coords
+
 
 def load_controller():
     class QObject:
@@ -77,6 +80,49 @@ controller_module = load_controller()
 
 
 class CanvasSyncTests(unittest.TestCase):
+    def test_same_center_zoom_is_not_suppressed_as_reverse_echo(self):
+        self.controller.begin_reverse_sync(self.center)
+        self.controller.schedule()
+        self.assertFalse(self.controller.sync_timer.active)
+        self.resolution /= 2
+        self.controller.schedule()
+        self.assertTrue(self.controller.sync_timer.active)
+        self.assertFalse(self.controller.update_roadview)
+
+    def test_ground_resolution_supports_degree_coordinates(self):
+        self.center = Point(127, 37)
+        self.resolution = 0.00001
+        self.controller.to_wgs84 = lambda p: (p.x(), p.y())
+        self.assertAlmostEqual(self.controller.meters_per_pixel(), 0.88804, places=4)
+
+    def test_zoom_changes_center_without_moving_panorama_then_pan_resumes(self):
+        self.controller.schedule()
+        self.assertTrue(self.controller.update_roadview)
+        for resolution in (2, 1, 2, 4):
+            self.resolution = resolution
+            self.center = Point(self.center.x() + 10, self.center.y() + 10)
+            self.controller.schedule()
+            self.assertFalse(self.controller.update_roadview)
+            # Duplicate extent notifications must not turn a zoom into a pan.
+            self.controller.schedule()
+            self.assertFalse(self.controller.update_roadview)
+        self.center = Point(500, 600)
+        self.controller.schedule()
+        self.assertTrue(self.controller.update_roadview)
+
+    def test_reset_and_crs_change_restore_panorama_updates(self):
+        self.controller.schedule()
+        self.resolution = 2
+        self.controller.schedule()
+        self.assertFalse(self.controller.update_roadview)
+        self.controller.reset_pending()
+        self.controller.schedule()
+        self.assertTrue(self.controller.update_roadview)
+        self.crs = 'EPSG:4326'
+        self.resolution = 0.001
+        self.controller.schedule()
+        self.assertTrue(self.controller.update_roadview)
+
     def setUp(self):
         self.center = Point(100, 200)
         self.crs = "EPSG:3857"

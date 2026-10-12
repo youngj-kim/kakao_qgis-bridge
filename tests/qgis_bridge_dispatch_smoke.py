@@ -60,6 +60,27 @@ def move(lon=129, source="normal"):
     return {"type": "move_center", "source": source,
             "payload": {"lon": lon, "lat": 37}}
 
+# A cursor-anchored zoom changes center and scale; only the map may follow it.
+plugin.sync_controller.schedule()
+extent = QgsRectangle(canvas.extent())
+extent.scale(0.5)
+extent = QgsRectangle(extent.xMinimum() + 500, extent.yMinimum() + 500,
+                      extent.xMaximum() + 500, extent.yMaximum() + 500)
+canvas.setExtent(extent)
+plugin.sync_controller.schedule()
+assert plugin.sync_controller.update_roadview is False
+plugin.sync_controller.sync_timer.stop()
+plugin.sync_controller.syncRequested.emit()
+assert dock.set_center.call_args.kwargs['update_roadview'] is False
+assert dock.set_center.call_args.kwargs['meters_per_pixel'] > 0
+assert server.snapshot()['center']['update_roadview'] is False
+plugin._handle_viewer_moved(127.1, 37.1, source='roadview')
+assert server.snapshot()['center']['update_roadview'] is True
+current = canvas.center()
+canvas.setCenter(QgsPointXY(current.x() + 1000, current.y()))
+plugin.sync_controller.schedule()
+assert plugin.sync_controller.update_roadview is True
+
 with patch("kakao_qgis_bridge.plugin.QgsMessageLog.logMessage") as logs:
     # Actual queue: distinct origins prevent movement coalescing.
     assert server.queue_event(move(10**400, "bad"))

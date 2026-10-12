@@ -12,16 +12,13 @@ SUMMARY_FIELDS = {"origin_lon", "origin_lat", "destination_lon", "destination_la
                   "distance_m", "duration_s", "waypoints_json"}
 
 
-def _file_revision(path):
-    # Include SQLite's WAL when present; do not hash a potentially huge package.
-    revisions = []
-    for candidate in (path, Path(str(path) + "-wal")):
-        try:
-            stat = candidate.stat()
-            revisions.append((stat.st_size, stat.st_mtime_ns))
-        except FileNotFoundError:
-            revisions.append(None)
-    return tuple(revisions)
+def _feature_values(feature, field_names):
+    """Normalize provider NULL values identically for indexing and display."""
+    values = {}
+    for name in field_names:
+        value = feature[name]
+        values[name] = value if isinstance(value, (str, int, float)) else None
+    return values
 
 
 def read_routes(filename):
@@ -29,7 +26,6 @@ def read_routes(filename):
     path = Path(filename).resolve()
     if path.suffix.lower() != ".gpkg":
         raise ValueError("비교는 GeoPackage (.gpkg) 파일을 지원합니다.")
-    revision = _file_revision(path)
     tables = {details.name() for details in
               QgsProviderRegistry.instance().querySublayers(str(path))}
     rows = []
@@ -55,10 +51,7 @@ def read_routes(filename):
         request = QgsFeatureRequest().setFlags(no_geometry)
         request.setSubsetOfAttributes(selected_fields, layer.fields())
         for feature in layer.getFeatures(request):
-            values = {}
-            for name in selected_fields:
-                value = feature[name]
-                values[name] = value if isinstance(value, (str, int, float)) else None
+            values = _feature_values(feature, selected_fields)
             for name in required:
                 value = values[name]
                 limit = 90 if name.endswith("lat") else 180
@@ -70,9 +63,7 @@ def read_routes(filename):
                                           not math.isfinite(value) or value < 0):
                     raise ValueError(f"{table} 행 {feature.id()}: {name} 값이 잘못되었습니다.")
             rows.append(dict(provider=provider, values=values, table=table,
-                             file=str(path), feature_id=feature.id(), revision=revision))
-    if _file_revision(path) != revision:
-        raise ValueError("비교 파일이 읽는 동안 변경되었습니다. 파일을 다시 여세요.")
+                             file=str(path), feature_id=feature.id()))
     if not rows:
         raise ValueError("카카오 또는 네이버 경로 이력이 있는 GPKG가 필요합니다.")
     return rows
@@ -81,21 +72,23 @@ def read_routes(filename):
 def route_geometry(row):
     """Load and validate just one selected geometry from the indexed package."""
     path = Path(row["file"])
-    if _file_revision(path) != row["revision"]:
-        raise ValueError("비교 파일이 변경되었습니다. 파일을 다시 여세요.")
     layer = QgsVectorLayer(f"{path}|layername={row['table']}", row['table'], "ogr")
     if not layer.isValid() or layer.crs() != QgsCoordinateReferenceSystem("EPSG:4326"):
         raise ValueError("선택한 비교 경로 레이어를 읽을 수 없습니다.")
     request = QgsFeatureRequest().setFilterFid(row["feature_id"])
-    request.setSubsetOfAttributes([])
+    selected_fields = sorted(SUMMARY_FIELDS & set(layer.fields().names()))
+    request.setSubsetOfAttributes(selected_fields, layer.fields())
     feature = next(layer.getFeatures(request), None)
-    geometry = QgsGeometry(feature.geometry()) if feature is not None else QgsGeometry()
+    # Filesystem timestamps and WAL/checkpoint changes are not route edits.
+    # Read attributes and geometry together so a stale summary cannot silently
+    # be paired with a deleted/replaced/edited selected row.
+    if feature is None or _feature_values(feature, selected_fields) != row["values"]:
+        raise ValueError("선택한 경로의 비교 정보가 변경되었거나 삭제되었습니다. 파일을 다시 여세요.")
+    geometry = QgsGeometry(feature.geometry())
     if (geometry.isEmpty() or geometry.isNull() or
             QgsWkbTypes.flatType(geometry.wkbType()) not in
             (QgsWkbTypes.LineString, QgsWkbTypes.MultiLineString)):
         raise ValueError("선택한 행에 유효한 경로 선이 없습니다.")
-    if _file_revision(path) != row["revision"]:
-        raise ValueError("비교 파일이 읽는 동안 변경되었습니다. 파일을 다시 여세요.")
     return geometry
 
 

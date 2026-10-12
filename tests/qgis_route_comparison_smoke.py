@@ -81,17 +81,54 @@ for label, style in (('B로 이름을 바꾼 A', 'solid'), ('A로 이름을 바�
     assert overlay.customProperty('skipMemoryLayersCheck') == 1
     assert overlay.renderer().symbol().symbolLayer(0).properties()['line_style'] == style
 del overlay
-# A changed source must not silently pair stale summary with a different geometry.
+# Filesystem-only changes must not block an unchanged selected route.
 changed_package = Path(fixture_directory.name) / 'changed.gpkg'
 changed_package.write_bytes(source.read_bytes())
 indexed = read_routes(changed_package)
 stat = changed_package.stat()
 os.utime(changed_package, ns=(stat.st_atime_ns, stat.st_mtime_ns + 2_000_000_000))
+assert not route_geometry(indexed[0]).isEmpty()
+# Opening/checkpointing SQLite WAL is not an edit of comparison data either.
+with sqlite3.connect(changed_package) as db:
+    db.execute('PRAGMA journal_mode=WAL')
+    db.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+assert not route_geometry(indexed[0]).isEmpty()
+# An unrelated row edit must not invalidate the selected comparison.
+with sqlite3.connect(changed_package) as db:
+    # Synthetic fixture edits use plain sqlite, without spatial SQL functions.
+    triggers = db.execute("SELECT name FROM sqlite_master WHERE type='trigger' "
+                          "AND tbl_name='naver_route_history'").fetchall()
+    for (name,) in triggers:
+        db.execute('DROP TRIGGER "' + name.replace('"', '""') + '"')
+    db.execute('UPDATE naver_route_history SET distance_m=distance_m+1 WHERE fid=?',
+               (indexed[1]['feature_id'],))
+assert not route_geometry(indexed[0]).isEmpty()
+# Real selected summary edits must not be silently paired with stale metadata.
+with sqlite3.connect(changed_package) as db:
+    db.execute('UPDATE naver_route_history SET distance_m=distance_m+1 WHERE fid=?',
+               (indexed[0]['feature_id'],))
 try:
     route_geometry(indexed[0])
     raise AssertionError('changed package accepted')
 except ValueError as exc:
     assert '다시 여세요' in str(exc)
+assert not route_geometry(read_routes(changed_package)[0]).isEmpty()
+# A deleted selected route has the same clear reopen guidance.
+deleted_package = Path(fixture_directory.name) / 'deleted.gpkg'
+deleted_package.write_bytes(source.read_bytes())
+deleted_rows = read_routes(deleted_package)
+with sqlite3.connect(deleted_package) as db:
+    # Remove spatial-index triggers; plain sqlite lacks their spatial functions.
+    triggers = db.execute("SELECT name FROM sqlite_master WHERE type='trigger' "
+                          "AND tbl_name='naver_route_history'").fetchall()
+    for (name,) in triggers:
+        db.execute('DROP TRIGGER "' + name.replace('"', '""') + '"')
+    db.execute('DELETE FROM naver_route_history WHERE fid=?', (deleted_rows[0]['feature_id'],))
+try:
+    route_geometry(deleted_rows[0])
+    raise AssertionError('deleted route accepted')
+except ValueError as exc:
+    assert '삭제' in str(exc)
 # Geometry validation is deferred until the selected route is displayed.
 empty_package = Path(fixture_directory.name) / 'empty-geometry.gpkg'
 empty_layer = QgsVectorLayer('LineString?crs=EPSG:4326&field=origin_lon:double'

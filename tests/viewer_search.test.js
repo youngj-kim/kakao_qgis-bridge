@@ -3,7 +3,7 @@ const { test } = require("node:test");
 const { Element, loadController, createDocument } = require("./viewer_test_support");
 
 function harness(ready = true) {
-  const nodes = Object.fromEntries(["searchForm", "searchQuery", "searchSubmit", "searchClear", "searchResults"]
+  const nodes = Object.fromEntries(["searchForm", "searchQuery", "searchSubmit", "searchClear", "searchResults", "searchResultsToggle"]
     .map((name) => [name, new Element()]));
   const places = [], addresses = [], selected = [], messages = [];
   const services = ready ? {
@@ -18,6 +18,54 @@ function harness(ready = true) {
   return { ...nodes, controller, places, addresses, selected, messages };
 }
 const place = { place_name: "<서울 & 역>", address_name: "서울", x: "127", y: "37.5" };
+
+test("results collapse and reopen without another API call or losing selection", () => {
+  const h = harness();
+  assert.equal(h.searchResultsToggle.hidden, true);
+  h.controller.search("서울");
+  h.places[0].callback([place], "OK");
+  h.addresses[0].callback([], "OK");
+  const result = h.searchResults.children[0];
+  assert.equal(h.searchResultsToggle.hidden, false);
+  assert.equal(h.searchResultsToggle.attributes["aria-expanded"], "true");
+  assert.match(h.searchResultsToggle.textContent, /1개 접기/);
+  h.searchResultsToggle.fire("click");
+  assert.equal(h.searchResults.hidden, true);
+  assert.equal(h.searchResultsToggle.attributes["aria-expanded"], "false");
+  h.searchResultsToggle.fire("click");
+  assert.equal(h.searchResults.hidden, false);
+  assert.equal(h.searchResults.children[0], result);
+  assert.equal(h.places.length, 1);
+  result.fire("click");
+  assert.equal(h.selected.length, 1);
+  h.controller.collapse();
+  assert.equal(h.searchResultsToggle.hidden, false);
+  h.searchResultsToggle.fire("click");
+  assert.equal(h.searchResults.hidden, false);
+});
+
+test("new results expand; clear/cancel discard cached results and stale replies", () => {
+  const h = harness();
+  h.controller.search("one");
+  h.places[0].callback([place], "OK");
+  h.addresses[0].callback([], "OK");
+  h.searchQuery.fire("keydown", { key: "Escape" });
+  assert.equal(h.searchResultsToggle.attributes["aria-expanded"], "false");
+  h.controller.search("two");
+  assert.equal(h.searchResultsToggle.hidden, true);
+  h.places[1].callback([], "OK");
+  h.addresses[1].callback([], "OK");
+  assert.equal(h.searchResults.hidden, false);
+  assert.match(h.searchResultsToggle.textContent, /0개 접기/);
+  h.searchClear.fire("click");
+  assert.equal(h.searchResultsToggle.hidden, true);
+  assert.equal(h.searchResults.children.length, 0);
+  h.controller.search("late");
+  h.controller.cancel();
+  h.places[2].callback([place], "OK");
+  h.addresses[2].callback([], "OK");
+  assert.equal(h.searchResultsToggle.hidden, true);
+});
 
 test("search combines both SDK replies, removes duplicates/invalid coordinates and uses safe text", () => {
   const h = harness();

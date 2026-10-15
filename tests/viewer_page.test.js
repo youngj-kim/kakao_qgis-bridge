@@ -15,7 +15,7 @@ function harness(mode) {
   function node(id) {
     if (!nodes.has(id)) {
       const element = new Element();
-      element.style = { setProperty() {} };
+      element.style = { setProperty(name, value) { this[name] = value; } };
       element.options = [{ text: "fixture" }];
       element.selectedIndex = 0;
       element.querySelector = () => null;
@@ -59,9 +59,65 @@ function harness(mode) {
 }
 
 for (const mode of ["external", "dock"]) {
+  test(mode + " native dock relayout hook retains inputs and queues view resizing", () => {
+    const h = harness(mode);
+    h.node("route-origin-input").value = "서울역";
+    const calls = h.calls.slice();
+    let requests = 0;
+    h.window.setTimeout = () => { requests += 1; return requests; };
+    h.window.relayoutKakaoViewer();
+    assert.equal(requests, 4);
+    assert.equal(h.node("route-origin-input").value, "서울역");
+    assert.deepEqual(h.calls, calls);
+  });
+  test(mode + " vertical split uses remaining space weights, not full window percentages", () => {
+    const h = harness(mode);
+    vm.runInContext("applyViewerSplit(60)", h.context);
+    const style = h.node("viewer").style;
+    assert.equal(style["--split-primary-size"], "60%");
+    assert.equal(style["--split-primary-weight"], "60fr");
+    assert.equal(style["--split-secondary-weight"], "40fr");
+    vm.runInContext("applyViewerSplit(200)", h.context);
+    assert.equal(style["--split-primary-weight"], "70fr");
+    assert.equal(style["--split-secondary-weight"], "30fr");
+  });
+  test(mode + " explorer collapses the whole panel without clearing inputs or results", () => {
+    const h = harness(mode);
+    const body = h.node("explorer-body"), toggle = h.node("explorer-toggle");
+    h.node("route-origin-input").value = "서울역";
+    h.node("route-destination-input").value = "수원역";
+    h.node("search-query").value = "서울";
+    h.node("map-type").value = "HYBRID";
+    h.signals.routeGuidanceChanged(JSON.stringify({
+      guides: [{ sequence: 1, longitude: 127, latitude: 37.5, guidance: "안내 유지" }],
+      path: [], summary: { duration_s: 60, distance_m: 100 }
+    }));
+    const guidance = h.node("route-guidance-list").textContent;
+    const calls = h.calls.slice();
+    let relayoutRequests = 0;
+    h.window.setTimeout = () => { relayoutRequests += 1; return relayoutRequests; };
+    toggle.fire("click");
+    assert.equal(body.hidden, true);
+    assert.equal(toggle.attributes["aria-expanded"], "false");
+    assert.match(toggle.textContent, /펼치기/);
+    assert.equal(relayoutRequests, 4);
+    toggle.fire("click");
+    assert.equal(body.hidden, false);
+    assert.equal(toggle.attributes["aria-expanded"], "true");
+    assert.match(toggle.textContent, /접기/);
+    assert.equal(relayoutRequests, 8);
+    assert.equal(h.node("route-origin-input").value, "서울역");
+    assert.equal(h.node("route-destination-input").value, "수원역");
+    assert.equal(h.node("search-query").value, "서울");
+    assert.equal(h.node("map-type").value, "HYBRID");
+    assert.equal(h.node("route-guidance-list").textContent, guidance);
+    assert.deepEqual(h.calls, calls, "Collapsing must not send route/bridge commands");
+  });
   test("assembled " + mode + " page initializes controllers and handles bridge signals without SDK", () => {
     const h = harness(mode);
     assert.match(h.node("status").textContent, /API 키/);
+    assert.equal(h.node("map-type").disabled, true);
+    assert.equal(h.node("roadview-roads-toggle").disabled, true);
     h.signals.routeGuidanceChanged(JSON.stringify({
       guides: [{ sequence: 1, longitude: 127, latitude: 37.5, guidance: "안내" }],
       path: [], summary: { duration_s: 60, distance_m: 100 }

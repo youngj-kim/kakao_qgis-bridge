@@ -2,10 +2,11 @@ import json
 import math
 from .viewer_page import load_viewer_template
 
-from qgis.PyQt.QtCore import QObject, Qt, QUrl, pyqtSignal, pyqtSlot
+from qgis.PyQt.QtCore import QObject, Qt, QTimer, QUrl, pyqtSignal, pyqtSlot
 from qgis.PyQt.QtGui import QDesktopServices, QKeySequence
 from qgis.PyQt.QtWidgets import (
     QDockWidget,
+    QMainWindow,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -244,6 +245,16 @@ class KakaoMapDockWidget(QDockWidget):
         self.web_channel = None
         self.web_runtime_diagnostic = web_runtime_diagnostic()
         self.full_screen_restore_floating = None
+        self._floating_size_initialized = False
+        self._floating_geometry = None
+        self._docked_width = 420
+        self._restoring_dock_geometry = False
+        self._last_floating = self.isFloating()
+        self._dock_transition_timer = QTimer(self)
+        self._dock_transition_timer.setSingleShot(True)
+        self._dock_transition_timer.setInterval(80)
+        self._dock_transition_timer.timeout.connect(self._finish_dock_transition)
+        self.topLevelChanged.connect(self._on_floating_changed)
         self.fallback_lon = None
         self.fallback_lat = None
         self.fallback_coordinate_label = None
@@ -269,6 +280,92 @@ class KakaoMapDockWidget(QDockWidget):
             escape_key = Qt.Key.Key_Escape
         self._escape_shortcut = QShortcut(QKeySequence(escape_key), self)
         self._escape_shortcut.activated.connect(self.exit_full_screen)
+
+    def _on_floating_changed(self, floating):
+        self._last_floating = floating
+        # Wait until Qt has completed the native title-bar double-click transition.
+        # A single owned timer also coalesces fast undock/redock sequences.
+        self._dock_transition_timer.start()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if (not hasattr(self, "_floating_size_initialized")
+                or self._restoring_dock_geometry
+                or self.isFloating() != self._last_floating
+                or self._dock_transition_timer.isActive()
+                or self.full_screen_restore_floating is not None):
+            return
+        if self.isFloating():
+            if self._floating_size_initialized and not self.isMaximized() and not self.isFullScreen():
+                self._floating_geometry = self.geometry()
+        else:
+            self._docked_width = self.width()
+
+    def _finish_dock_transition(self):
+        if self.full_screen_restore_floating is not None or self.isFullScreen():
+            return
+        self._restoring_dock_geometry = True
+        try:
+            if self.isFloating():
+                if self._floating_size_initialized and self._floating_geometry is not None:
+                    self.setGeometry(self._floating_geometry)
+                self._initialize_floating_size()
+                self._fit_floating_to_screen()
+                self._floating_geometry = self.geometry()
+            else:
+                # Floating window dimensions must not become the redocked width.
+                parent = self.parentWidget()
+                if (isinstance(parent, QMainWindow) and parent.dockWidgetArea(self) in (
+                        Qt.DockWidgetArea.LeftDockWidgetArea,
+                        Qt.DockWidgetArea.RightDockWidgetArea)):
+                    width = min(max(280, self._docked_width), max(280, parent.width() // 2))
+                    parent.resizeDocks([self], [width], Qt.Orientation.Horizontal)
+                    if parent.layout() is not None:
+                        parent.layout().activate()
+            self.widget().updateGeometry()
+            self.updateGeometry()
+            self.update()
+            if self.web_view is not None:
+                # Refresh the composited surface after reparenting, without
+                # reloading HTML or losing inputs, routes or the panorama.
+                self.web_view.hide()
+                self.web_view.show()
+                self.web_view.page().runJavaScript(
+                    "if (window.relayoutKakaoViewer) window.relayoutKakaoViewer();"
+                )
+        finally:
+            self._restoring_dock_geometry = False
+
+    def _initialize_floating_size(self):
+        if (not self.isFloating() or self.isFullScreen()
+                or self.full_screen_restore_floating is not None
+                or self._floating_size_initialized):
+            return
+        screen = self.screen()
+        if screen is None:
+            return
+        available = screen.availableGeometry()
+        # Logical pixels respect display scaling. Leave space for window borders.
+        width_limit = max(1, available.width() - 32)
+        height_limit = max(1, available.height() - 48)
+        self.resize(
+            min(max(self.width(), 1100), width_limit),
+            min(max(self.height(), 850), height_limit),
+        )
+        self._fit_floating_to_screen()
+        self._floating_size_initialized = True
+
+    def _fit_floating_to_screen(self):
+        screen = self.screen()
+        if screen is None:
+            return
+        available = screen.availableGeometry()
+        self.resize(min(self.width(), max(1, available.width() - 32)),
+                    min(self.height(), max(1, available.height() - 48)))
+        frame = self.frameGeometry()
+        x = max(available.left(), min(frame.left(), available.right() - frame.width() + 1))
+        y = max(available.top(), min(frame.top(), available.bottom() - frame.height() + 1))
+        self.move(x, y)
 
     def set_center(self, lon, lat, update_roadview=True, meters_per_pixel=None):
         if self.web_view is None:
@@ -310,6 +407,7 @@ class KakaoMapDockWidget(QDockWidget):
         if restore_floating is False:
             self.setFloating(False)
         self.full_screen_restore_floating = None
+        self._dock_transition_timer.start()
 
     def set_route_status(self, success, message):
         if self.web_bridge is not None:

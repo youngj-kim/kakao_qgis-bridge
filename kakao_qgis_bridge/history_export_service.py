@@ -381,6 +381,9 @@ class HistoryExportService:
             "car_hipass",
         ):
             self._gpx_kakao_text(writer, key, route_feature[key])
+        for key in ("toll_fare", "taxi_fare"):
+            if key in route_feature.fields().names() and not QgsVariantUtils.isNull(route_feature[key]):
+                self._gpx_kakao_text(writer, key, route_feature[key])
         writer.end("extensions")
 
     @staticmethod
@@ -501,6 +504,8 @@ class HistoryExportService:
             {'source': 'car_type', 'type': 'integer'},
             {'source': 'car_fuel', 'type': 'string', 'length': 16},
             {'source': 'car_hipass', 'type': 'integer'},
+            {'source': 'toll_fare', 'type': 'integer'},
+            {'source': 'taxi_fare', 'type': 'integer'},
         ]
         return [{"name": names[spec["source"]], **spec} for spec in field_specs]
 

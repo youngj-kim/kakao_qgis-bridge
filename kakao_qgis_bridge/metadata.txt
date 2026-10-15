@@ -3,8 +3,16 @@ name=Kakao QGIS Bridge
 qgisMinimumVersion=3.34
 qgisMaximumVersion=4.99
 description=Kakao Map and Roadview viewer with bidirectional QGIS synchronization and Local search; dock or external browser depending on the QGIS runtime.
-version=1.2.1
-changelog=1.2.1
+version=1.2.2
+changelog=1.2.2
+    - Restore floating/docked sizes separately and refresh viewer layout after dock transitions without reloading the page.
+    - Improved initial floating dock size within screen bounds and split map/Roadview using the remaining vertical space.
+    - Added whole explorer panel collapse/expand, preserving inputs and results while resizing map and Roadview.
+    - Added collapsible Local search results that can be reopened without searching again.
+    - Added Roadview road coverage overlay and normal/aerial/aerial-with-labels map switching in the viewer.
+    - Store toll and estimated taxi fares in route histories and compare available KRW amounts and B-minus-A differences in GPKG comparison.
+    - Preserve missing fares as unknown rather than zero; existing GPKG files remain readable.
+    1.2.1
     - Added read-only GPKG route comparison for Kakao/Naver histories, with ordered 20m waypoint matching and lazy selected-route geometry loading.
     - Extracted route orchestration, shared viewer delivery and map/Roadview synchronization; cancel pending viewer work on project reset.
     - Added bidirectional QGIS/Kakao Map zoom synchronization while preserving the Roadview position during zoom-only changes.

@@ -8,6 +8,7 @@ VIEWER_SCRIPTS = {
     "__VIEWER_HISTORY_SCRIPT__": "viewer_history.js",
     "__VIEWER_ROUTE_INPUT_SCRIPT__": "viewer_route_input.js",
     "__VIEWER_SYNC_SCRIPT__": "viewer_sync.js",
+    "__VIEWER_MAP_OPTIONS_SCRIPT__": "viewer_map_options.js",
 }
 
 

@@ -1,9 +1,31 @@
 /* Local place/address search; dependencies supplied by the viewer. */
 window.createKakaoSearchController = function createKakaoSearchController({
   document, searchForm, searchQuery, searchSubmit, searchClear, searchResults,
+  searchResultsToggle,
   getServices, setStatus, selectSearchResult
 }) {
     let searchRequestId = 0;
+    let hasResults = false;
+    let resultCount = 0;
+
+    function setExpanded(expanded) {
+      searchResults.hidden = !expanded;
+      searchResultsToggle.hidden = !hasResults;
+      searchResultsToggle.setAttribute("aria-expanded", String(expanded));
+      searchResultsToggle.textContent = `검색 결과 ${resultCount}개 ${expanded ? "접기" : "펼치기"}`;
+    }
+
+    function clearResults() {
+      hasResults = false;
+      resultCount = 0;
+      searchResults.textContent = "";
+      setExpanded(false);
+    }
+
+    clearResults();
+    searchResultsToggle.addEventListener("click", () => {
+      if (hasResults) setExpanded(searchResults.hidden);
+    });
 
     function normalizePlaceResult(place) {
       return {
@@ -31,13 +53,15 @@ window.createKakaoSearchController = function createKakaoSearchController({
 
     function renderSearchResults(results, onSelect = selectSearchResult) {
       searchResults.textContent = "";
+      hasResults = true;
+      resultCount = results.length;
 
       if (!results.length) {
         const empty = document.createElement("div");
         empty.className = "search-empty";
         empty.textContent = "검색 결과가 없습니다.";
         searchResults.appendChild(empty);
-        searchResults.hidden = false;
+        setExpanded(true);
         return;
       }
 
@@ -61,7 +85,7 @@ window.createKakaoSearchController = function createKakaoSearchController({
         searchResults.appendChild(button);
       });
 
-      searchResults.hidden = false;
+      setExpanded(true);
     }
 
     function searchLocal(
@@ -82,6 +106,7 @@ window.createKakaoSearchController = function createKakaoSearchController({
       let failed = false;
 
       if (manageSearchButton) {
+        clearResults();
         searchSubmit.disabled = true;
       }
       setStatus(`카카오 장소·주소 검색 중: ${query}`);
@@ -109,7 +134,7 @@ window.createKakaoSearchController = function createKakaoSearchController({
 
         const results = Array.from(unique.values());
         if (selectFirst && results.length) {
-          searchResults.hidden = true;
+          setExpanded(false);
           if (manageSearchButton) {
             searchSubmit.disabled = false;
           }
@@ -152,7 +177,7 @@ window.createKakaoSearchController = function createKakaoSearchController({
 
     function cancel() {
       searchRequestId += 1;
-      searchResults.hidden = true;
+      clearResults();
       // A superseded request cannot re-enable the main search button.
       // Release it here once services are ready, including route-input resets.
       const services = getServices();
@@ -172,7 +197,7 @@ window.createKakaoSearchController = function createKakaoSearchController({
       searchClear.disabled = !searchQuery.value;
     });
     searchQuery.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") searchResults.hidden = true;
+      if (event.key === "Escape") setExpanded(false);
     });
     searchClear.addEventListener("click", () => {
       cancel();
@@ -182,5 +207,5 @@ window.createKakaoSearchController = function createKakaoSearchController({
       searchQuery.focus();
     });
 
-    return { search: searchLocal, cancel };
+    return { search: searchLocal, cancel, collapse: () => setExpanded(false) };
 };

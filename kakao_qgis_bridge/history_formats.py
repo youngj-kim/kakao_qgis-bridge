@@ -29,6 +29,8 @@ def full_history_field_specs(layer_type):
             {"source": "car_type", "name": "car_type"},
             {"source": "car_fuel", "name": "car_fuel"},
             {"source": "car_hipass", "name": "car_hipass"},
+            {"source": "toll_fare", "name": "toll_fare"},
+            {"source": "taxi_fare", "name": "taxi_fare"},
         ]
     return [
         {"source": "schema_ver", "name": "schema_v"},

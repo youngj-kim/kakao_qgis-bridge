@@ -964,6 +964,8 @@ class KakaoQgisBridgePlugin:
         avoid_options,
         vehicle_options,
         guides,
+        toll_fare=None,
+        taxi_fare=None,
     ):
         try:
             self.history_repository.append(
@@ -971,6 +973,7 @@ class KakaoQgisBridgePlugin:
                 origin_label, destination_label, waypoints, distance, duration,
                 guidance_count, result_summary, priority, avoid_options,
                 vehicle_options, guides,
+                toll_fare=toll_fare, taxi_fare=taxi_fare,
             )
         except HistoryOperationError as exc:
             self._handle_history_operation_error(exc)

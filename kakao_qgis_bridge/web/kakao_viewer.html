@@ -18,11 +18,13 @@
     #viewer {
       display: grid;
       --split-primary-size: 50%;
+      --split-primary-weight: 50fr;
+      --split-secondary-weight: 50fr;
       grid-template-rows:
         auto
-        minmax(0, var(--split-primary-size))
+        minmax(0, var(--split-primary-weight))
         10px
-        minmax(0, 1fr)
+        minmax(0, var(--split-secondary-weight))
         auto;
       grid-template-columns: minmax(0, 1fr);
       height: 100%;
@@ -34,9 +36,9 @@
     #viewer.layout-map-top {
       grid-template-rows:
         auto
-        minmax(0, var(--split-primary-size))
+        minmax(0, var(--split-primary-weight))
         10px
-        minmax(0, 1fr)
+        minmax(0, var(--split-secondary-weight))
         auto;
       grid-template-columns: minmax(0, 1fr);
     }
@@ -44,9 +46,9 @@
     #viewer.layout-roadview-top {
       grid-template-rows:
         auto
-        minmax(0, var(--split-primary-size))
+        minmax(0, var(--split-primary-weight))
         10px
-        minmax(0, 1fr)
+        minmax(0, var(--split-secondary-weight))
         auto;
       grid-template-columns: minmax(0, 1fr);
     }
@@ -166,6 +168,27 @@
       background: #ffffff;
     }
 
+    #explorer-toggle {
+      width: 100%;
+      min-height: 28px;
+      margin-bottom: 6px;
+      border: 1px solid #90979c;
+      border-radius: 6px;
+      background: #f3f4f4;
+      color: #1f2428;
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    #explorer-toggle[aria-expanded="false"] {
+      margin-bottom: 0;
+    }
+
+    #explorer-body[hidden] {
+      display: none;
+    }
+
     #search-form {
       display: grid;
       grid-template-areas: "query submit layout fullscreen clear";
@@ -192,6 +215,35 @@
       outline-offset: 0;
     }
 
+    #map-options {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      margin-top: 6px;
+      font-size: 12px;
+    }
+
+    #map-type,
+    #roadview-roads-toggle {
+      padding: 0 8px;
+    }
+
+    #roadview-roads-toggle[aria-pressed="true"] {
+      background: #e3f1ff;
+      border-color: #2167a8;
+      color: #164877;
+    }
+
+    #map-type:disabled,
+    #roadview-roads-toggle:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+
+    #map-type,
+    #roadview-roads-toggle,
+    #search-results-toggle,
     #viewer-layout,
     #fullscreen-toggle,
     #search-submit,
@@ -889,9 +941,9 @@
       #viewer.layout-roadview-left {
         grid-template-rows:
           auto
-          minmax(0, var(--split-primary-size))
+          minmax(0, var(--split-primary-weight))
           10px
-          minmax(0, 1fr)
+          minmax(0, var(--split-secondary-weight))
           auto;
         grid-template-columns: minmax(0, 1fr);
       }
@@ -972,6 +1024,8 @@
 <body>
   <main id="viewer" class="layout-map-top">
     <header id="search-panel">
+      <button id="explorer-toggle" type="button" aria-controls="explorer-body" aria-expanded="true">탐색창 접기 ▴</button>
+      <div id="explorer-body">
       <form id="search-form" role="search">
         <input id="search-query" type="search" aria-label="주소 또는 장소 검색" placeholder="주소 또는 장소 검색" autocomplete="off" disabled>
         <button id="search-submit" type="submit" disabled>검색</button>
@@ -984,6 +1038,16 @@
         <button id="fullscreen-toggle" type="button" title="전체화면 전환" aria-label="전체화면 전환">⛶</button>
         <button id="search-clear" type="button" title="검색 지우기" aria-label="검색 지우기" disabled>×</button>
       </form>
+      <div id="map-options" aria-label="지도 표시 설정">
+        <label for="map-type">지도</label>
+        <select id="map-type" disabled>
+          <option value="ROADMAP">일반지도</option>
+          <option value="SKYVIEW">항공영상</option>
+          <option value="HYBRID">항공영상+지명</option>
+        </select>
+        <button id="roadview-roads-toggle" type="button" aria-pressed="false" title="로드뷰 촬영 도로 표시 켜기/끄기" disabled>로드뷰 도로 표시</button>
+        <button id="search-results-toggle" type="button" aria-controls="search-results" aria-expanded="false" hidden>검색 결과 펼치기</button>
+      </div>
       <div id="route-controls" aria-label="경로 탐색">
         <div id="route-options">
           <label class="route-label" for="route-priority">경로</label>
@@ -1049,6 +1113,7 @@
         <div id="route-history-list" role="listbox" aria-label="경로 이력" hidden></div>
       </section>
       <div id="search-results" role="listbox" aria-label="검색 결과" hidden></div>
+      </div>
     </header>
     <section id="map" aria-label="Kakao map"></section>
     <div id="view-splitter" role="separator" aria-label="지도와 로드뷰 크기 조절" aria-orientation="horizontal">
@@ -1076,6 +1141,9 @@ __VIEWER_ROUTE_INPUT_SCRIPT__
   </script>
   <script>
 __VIEWER_SYNC_SCRIPT__
+  </script>
+  <script>
+__VIEWER_MAP_OPTIONS_SCRIPT__
   </script>
   <script>
     const kakaoAppKey = __KAKAO_APP_KEY_JSON__;
@@ -1138,6 +1206,11 @@ __VIEWER_SYNC_SCRIPT__
     let qgisBridge = null;
     let stableRelayoutTimers = [];
     let lastRoadviewSize = "";
+    const mapOptions = window.createKakaoMapOptions({
+      typeSelect: document.getElementById("map-type"),
+      roadsButton: document.getElementById("roadview-roads-toggle"),
+      getMap: () => map, getMaps: () => kakao.maps
+    });
     const viewerSync = window.createKakaoViewerSync({
       document, timers: window, getMap: () => map, getMarker: () => marker,
       getRoadview: () => roadview, getRoadviewClient: () => roadviewClient,
@@ -1158,6 +1231,7 @@ __VIEWER_SYNC_SCRIPT__
     });
     const searchController = window.createKakaoSearchController({
       document, searchForm, searchQuery, searchSubmit, searchClear, searchResults,
+      searchResultsToggle: document.getElementById("search-results-toggle"),
       getServices: () => ({
         placesService, geocoderService,
         status: placesService ? kakao.maps.services.Status : {}
@@ -1211,6 +1285,20 @@ __VIEWER_SYNC_SCRIPT__
       });
     }
 
+    // Native dock transitions do not always produce a reliable browser resize.
+    window.relayoutKakaoViewer = scheduleStableRelayout;
+
+    const explorerToggle = document.getElementById("explorer-toggle");
+    const explorerBody = document.getElementById("explorer-body");
+    explorerToggle.addEventListener("click", () => {
+      const collapsed = !explorerBody.hidden;
+      explorerBody.hidden = collapsed;
+      explorerToggle.setAttribute("aria-expanded", String(!collapsed));
+      explorerToggle.textContent = collapsed ? "탐색창 펼치기 ▾" : "탐색창 접기 ▴";
+      // Keep all input/result state; only recalculate the newly available view area.
+      scheduleStableRelayout();
+    });
+
     function isHorizontalSplitLayout(layout = viewerLayoutSelect.value) {
       if (window.matchMedia("(max-width: 980px)").matches) {
         return true;
@@ -1230,6 +1318,8 @@ __VIEWER_SYNC_SCRIPT__
     function applyViewerSplit(percent) {
       const nextPercent = Math.min(70, Math.max(30, Number(percent) || 50));
       viewer.style.setProperty("--split-primary-size", `${nextPercent}%`);
+      viewer.style.setProperty("--split-primary-weight", `${nextPercent}fr`);
+      viewer.style.setProperty("--split-secondary-weight", `${100 - nextPercent}fr`);
       try {
         window.localStorage.setItem(viewerSplitStorageKey, String(nextPercent));
       } catch (_error) {
@@ -1447,7 +1537,7 @@ __VIEWER_SYNC_SCRIPT__
     function selectSearchResult(result) {
       map.setLevel(4);
       moveViewer(result.lon, result.lat);
-      searchResults.hidden = true;
+      searchController.collapse();
 
       if (qgisBridge) {
         qgisBridge.moveQgisCenter(result.lon, result.lat);
@@ -1485,6 +1575,7 @@ __VIEWER_SYNC_SCRIPT__
         scrollwheel: true
       });
       map.setZoomable(true);
+      mapOptions.initialize();
       map.addControl(new kakao.maps.ZoomControl(), kakao.maps.ControlPosition.TOPRIGHT);
       kakao.maps.event.addListener(map, "zoom_changed", viewerSync.scheduleMapZoomSync);
 
@@ -1500,7 +1591,7 @@ __VIEWER_SYNC_SCRIPT__
       kakao.maps.event.addListener(map, "dragend", viewerSync.onMapDragEnd);
 
       kakao.maps.event.addListener(map, "click", () => {
-        searchResults.hidden = true;
+        searchController.collapse();
       });
 
       roadview = new kakao.maps.Roadview(document.getElementById("roadview"));

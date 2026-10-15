@@ -100,12 +100,12 @@ class HistoryImportService:
                     report.warn("예전 안내 SHP의 history_id를 짝 경로의 유일한 route_id로 복원했습니다. 예전 누적 거리·시간 필드명도 함께 읽었습니다.")
                 values, provided = normalize_values(values, kind, shapefile, report)
                 geometry = QgsGeometry(feature.geometry())
-                expected = QgsWkbTypes.LineString if kind == "route" else QgsWkbTypes.Point
+                expected = QgsWkbTypes.Type.LineString if kind == "route" else QgsWkbTypes.Type.Point
                 flat = QgsWkbTypes.flatType(geometry.wkbType())
                 if (geometry.isNull() or geometry.isEmpty() or QgsWkbTypes.hasZ(geometry.wkbType())
                         or QgsWkbTypes.hasM(geometry.wkbType())):
                     raise ValueError("geometry: 비어 있지 않은 2차원 geometry가 필요합니다")
-                if kind == "route" and flat == QgsWkbTypes.MultiLineString:
+                if kind == "route" and flat == QgsWkbTypes.Type.MultiLineString:
                     parts = geometry.asMultiPolyline()
                     if len(parts) != 1:
                         raise ValueError("geometry: 여러 부분인 경로는 지원하지 않습니다")
@@ -147,7 +147,7 @@ class HistoryImportService:
         if not cls.same_geometry(ag, bg):
             return False
         keys = ({"origin_lon", "origin_lat", "destination_lon", "destination_lat", "route_id",
-                 "distance_m", "duration_s"} if core else set(av))
+                 "distance_m", "duration_s", "toll_fare", "taxi_fare"} if core else set(av))
         for key in keys:
             if core and (key not in provided or key not in other_provided):
                 continue

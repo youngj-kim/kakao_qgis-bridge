@@ -2,6 +2,7 @@
 import json
 import math
 import re
+from .fare_values import fare_amount, FARE_FIELDS
 from dataclasses import dataclass, field
 
 from .mobility import (MAX_ROUTE_WAYPOINTS, ROUTE_PRIORITIES, ROUTE_AVOID_OPTIONS,
@@ -102,6 +103,8 @@ def normalize_values(values, kind, shapefile, report):
         if isinstance(default, str) and not isinstance(values[key], str):
             raise ValueError(f"{key}: 문자열 값이 필요합니다")
     if kind == "route":
+        for key, _label in FARE_FIELDS:
+            values[key] = fare_amount(values.get(key))
         if values["priority"] not in ROUTE_PRIORITIES:
             raise ValueError("priority: 지원하지 않는 경로 옵션입니다")
         if any(item not in ROUTE_AVOID_OPTIONS for item in values["avoid"].split("|") if item):

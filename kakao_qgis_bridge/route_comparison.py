@@ -1,6 +1,7 @@
 """Read provider history packages without importing them into Kakao history."""
 import json
 import math
+from .fare_values import FARE_FIELDS, fare_amount
 from pathlib import Path
 
 from qgis.core import (Qgis, QgsCoordinateReferenceSystem, QgsFeature, QgsFeatureRequest,
@@ -9,7 +10,7 @@ from qgis.core import (Qgis, QgsCoordinateReferenceSystem, QgsFeature, QgsFeatur
 
 SUMMARY_FIELDS = {"origin_lon", "origin_lat", "destination_lon", "destination_lat",
                   "origin_name", "destination_name", "searched_at", "history_id",
-                  "distance_m", "duration_s", "waypoints_json"}
+                  "distance_m", "duration_s", "waypoints_json", "toll_fare", "taxi_fare"}
 
 
 def _feature_values(feature, field_names):
@@ -38,7 +39,7 @@ def read_routes(filename):
             raise ValueError(f"{table}: 경로 레이어를 열 수 없습니다.")
         if layer.crs() != QgsCoordinateReferenceSystem("EPSG:4326"):
             raise ValueError(f"{table}: EPSG:4326 좌표계가 필요합니다.")
-        if QgsWkbTypes.flatType(layer.wkbType()) not in (QgsWkbTypes.LineString, QgsWkbTypes.MultiLineString):
+        if QgsWkbTypes.flatType(layer.wkbType()) not in (QgsWkbTypes.Type.LineString, QgsWkbTypes.Type.MultiLineString):
             raise ValueError(f"{table}: 경로 선 레이어가 필요합니다.")
         required = {"origin_lon", "origin_lat", "destination_lon", "destination_lat"}
         fields = set(layer.fields().names())
@@ -52,6 +53,9 @@ def read_routes(filename):
         request.setSubsetOfAttributes(selected_fields, layer.fields())
         for feature in layer.getFeatures(request):
             values = _feature_values(feature, selected_fields)
+            for field, _label in FARE_FIELDS:
+                if field in values:
+                    values[field] = fare_amount(values[field])
             for name in required:
                 value = values[name]
                 limit = 90 if name.endswith("lat") else 180
@@ -87,7 +91,7 @@ def route_geometry(row):
     geometry = QgsGeometry(feature.geometry())
     if (geometry.isEmpty() or geometry.isNull() or
             QgsWkbTypes.flatType(geometry.wkbType()) not in
-            (QgsWkbTypes.LineString, QgsWkbTypes.MultiLineString)):
+            (QgsWkbTypes.Type.LineString, QgsWkbTypes.Type.MultiLineString)):
         raise ValueError("선택한 행에 유효한 경로 선이 없습니다.")
     return geometry
 

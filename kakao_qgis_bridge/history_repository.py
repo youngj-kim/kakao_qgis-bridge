@@ -8,6 +8,7 @@ from qgis.core import QgsFeature, QgsGeometry, QgsPointXY, QgsVectorLayer
 from .history_formats import HISTORY_SCHEMA_VERSION
 from .history_values import safe_number
 from .history_operations import HistoryOperations
+from .fare_values import fare_amount
 
 
 class HistoryRepository:
@@ -51,6 +52,8 @@ class HistoryRepository:
                 "&field=car_type:integer"
                 "&field=car_fuel:string(16)"
                 "&field=car_hipass:integer"
+                "&field=toll_fare:integer"
+                "&field=taxi_fare:integer"
             )
             self.route_layer = QgsVectorLayer(
                 route_uri,
@@ -108,6 +111,8 @@ class HistoryRepository:
         avoid_options,
         vehicle_options,
         guides,
+        toll_fare=None,
+        taxi_fare=None,
     ):
         route_layer, guidance_layer = self.ensure_layers()
         route_feature = QgsFeature(route_layer.fields())
@@ -134,6 +139,8 @@ class HistoryRepository:
                 vehicle_options["car_type"],
                 vehicle_options["car_fuel"],
                 1 if vehicle_options["car_hipass"] else 0,
+                fare_amount(toll_fare),
+                fare_amount(taxi_fare),
             ]
         )
         guidance_features = []

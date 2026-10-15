@@ -4,6 +4,8 @@ import json
 import math
 from dataclasses import dataclass
 from uuid import uuid4
+from typing import Optional
+from .fare_values import fare_amount
 
 
 ROUTE_ENDPOINT = "https://apis-navi.kakaomobility.com/v1/directions"
@@ -91,6 +93,8 @@ class RouteResultData:
     distance: int
     duration: int
     guides: tuple
+    toll_fare: Optional[int] = None
+    taxi_fare: Optional[int] = None
 
 
 def _coordinate(lon, lat, label):
@@ -399,6 +403,13 @@ def parse_route_payload(payload):
         raise MobilityResponseError("경로 선형 좌표를 찾지 못했습니다.")
     summary = route.get("summary")
     summary = _response_object({} if summary is None else summary, "요약")
+    fare = summary.get("fare")
+    fare = _response_object({} if fare is None else fare, "요금")
+    try:
+        toll_fare = fare_amount(fare.get("toll"))
+        taxi_fare = fare_amount(fare.get("taxi"))
+    except ValueError as exc:
+        raise MobilityResponseError(str(exc)) from exc
     route_id = str(payload.get("trans_id") or uuid4())
     return RouteResultData(
         route_id=route_id,
@@ -406,6 +417,8 @@ def parse_route_payload(payload):
         distance=_response_integer(summary.get("distance"), "거리"),
         duration=_response_integer(summary.get("duration"), "시간"),
         guides=_extract_guides(route, route_id),
+        toll_fare=toll_fare,
+        taxi_fare=taxi_fare,
     )
 
 

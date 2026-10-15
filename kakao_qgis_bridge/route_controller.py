@@ -146,6 +146,8 @@ class RouteController:
             "summary": {
                 "distance_m": distance,
                 "duration_s": duration,
+                "toll_fare": getattr(result, "toll_fare", None),
+                "taxi_fare": getattr(result, "taxi_fare", None),
                 "guidance_count": guidance_count,
                 "result_summary": result_summary,
                 "priority": priority,
@@ -195,6 +197,8 @@ class RouteController:
             avoid_options=avoid_options,
             vehicle_options=vehicle_options,
             guides=guides,
+            toll_fare=getattr(result, "toll_fare", None),
+            taxi_fare=getattr(result, "taxi_fare", None),
         )
         if epoch != self.callbacks.current_epoch():
             return

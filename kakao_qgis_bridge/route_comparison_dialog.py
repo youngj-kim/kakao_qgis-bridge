@@ -5,6 +5,7 @@ from qgis.PyQt.QtWidgets import (QComboBox, QDialog, QFileDialog, QGroupBox,
                                 QTableWidget, QTableWidgetItem, QVBoxLayout)
 
 from .route_comparison import condition_message, display_layer, read_routes
+from .fare_values import FARE_FIELDS
 
 
 class RouteComparisonDialog(QDialog):
@@ -34,7 +35,7 @@ class RouteComparisonDialog(QDialog):
             inner.addWidget(choice)
             self.choices.append(choice)
             layout.addWidget(box)
-        self.table = QTableWidget(6, 3)
+        self.table = QTableWidget(8, 3)
         self.table.setMinimumHeight(240)
         self.table.setHorizontalHeaderLabels(["항목", "A", "B"])
         from qgis.PyQt.QtWidgets import QAbstractItemView, QHeaderView
@@ -88,6 +89,7 @@ class RouteComparisonDialog(QDialog):
         specs = [("출처", None), ("조회 시점", "searched_at"),
                  ("출발", "origin_name"), ("도착", "destination_name"),
                  ("거리", "distance_m"), ("소요 시간", "duration_s")]
+        specs.extend((label, field) for field, label in FARE_FIELDS)
         for i, (label, field) in enumerate(specs):
             self.table.setItem(i, 0, QTableWidgetItem(label))
             for j, row in enumerate(selected, 1):
@@ -97,6 +99,8 @@ class RouteComparisonDialog(QDialog):
                     text = f"{value / 1000:.3f} km"
                 if value is not None and field == "duration_s":
                     text = f"{value / 60:.1f}분"
+                if value is not None and field in {key for key, _label in FARE_FIELDS}:
+                    text = f"{value:,.0f}원"
                 self.table.setItem(i, j, QTableWidgetItem(text))
         ready = all(row is not None for row in selected)
         self.show_button.setEnabled(ready)
@@ -109,6 +113,11 @@ class RouteComparisonDialog(QDialog):
                 av, bv = a["values"].get(field), b["values"].get(field)
                 if av is not None and bv is not None:
                     text += f"\n{name} 차이 (B − A): {(bv - av) / divisor:+.1f}{unit}"
+            for field, label in FARE_FIELDS:
+                av, bv = a["values"].get(field), b["values"].get(field)
+                difference = f"{bv - av:+,}원" if av is not None and bv is not None else "비교 불가 (정보 없음)"
+                text += f"\n{label} 차이 (B − A): {difference}"
+            text += "\n요금은 조회 당시 서비스별 예상 금액이며 실제 청구액을 보장하지 않습니다."
         self.conditions.setText(text)
         self.table.resizeRowsToContents()
 

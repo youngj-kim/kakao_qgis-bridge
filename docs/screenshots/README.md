@@ -1,4 +1,6 @@
-# Screenshot Inventory
+# 스크린샷 목록
+
+기존 기능 설명용 자료입니다. 1.3 압축 배치·EN/KR·현위치/Here 변경 전 화면이며 최신 UI 캡처가 아닙니다. 현재 [사용 가이드](../usage.md)를 참고하세요.
 
 Save screenshots here before documenting the release. Use PNG unless there is a
 specific reason to use another format.

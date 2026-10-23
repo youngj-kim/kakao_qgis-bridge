@@ -1,5 +1,7 @@
 # 프로젝트 전환 검토 — 2026-10-08
 
+> 과거 개발·검토 기록입니다. 당시 버전과 검증 결과를 보존하며, 현재 배포 상태는 [배포 체크리스트](../release-checklist.md)를 참고하세요.
+
 ## 실행 근거
 
 `tests/qgis_project_transition_review_probe.py`로 Windows QGIS 3.44.14와 4.2.2의 실제 clear/read를 관찰했다. 임시 빈 프로젝트와 메모리 레이어만 사용했다. 응답은 QObject fixture로 제공하고 실제 MobilityClient 완료 처리와 Qt 성공 신호를 실행했다. 사용자 앱·프로젝트·설치 플러그인과 실제 카카오 API는 사용하지 않았다. 관찰은 회귀 통과 수치나 실제 네트워크/SDK 화면 검증과 구별한다.

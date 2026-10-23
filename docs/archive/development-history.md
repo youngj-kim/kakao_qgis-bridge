@@ -1,8 +1,10 @@
 # 날짜별 개발 이력
 
-[사용자 안내로 돌아가기](../README.md) · [개발 구조와 메모](development.md) · [리팩토링 진행 기록](refactoring-progress.md)
+> 과거 개발·검토 기록입니다. 당시 버전과 검증 결과를 보존하며, 현재 배포 상태는 [배포 체크리스트](../release-checklist.md)를 참고하세요.
 
-아래 내용은 각 날짜 당시의 기록입니다. 이후 구현된 저장·내보내기·동기화 기능의 현재 지원 여부는 [README](../README.md)와 [CHANGELOG](../CHANGELOG.md)를 기준으로 확인하세요.
+[사용자 안내로 돌아가기](../../README.md) · [개발 구조와 메모](../development.md) · [리팩토링 진행 기록](refactoring-progress.md)
+
+아래 내용은 각 날짜 당시의 기록입니다. 이후 구현된 저장·내보내기·동기화 기능의 현재 지원 여부는 [README](../../README.md)와 [CHANGELOG](../../CHANGELOG.md)를 기준으로 확인하세요.
 
 ### 2026-06-24 - 기본 플러그인 구동
 

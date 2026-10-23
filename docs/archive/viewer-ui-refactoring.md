@@ -1,5 +1,7 @@
 # Viewer UI JavaScript 분리
 
+> 과거 개발·검토 기록입니다. 당시 버전과 검증 결과를 보존하며, 현재 배포 상태는 [배포 체크리스트](../release-checklist.md)를 참고하세요.
+
 ## 진행 순서와 경계
 
 1. viewer_search.js: Local 장소·주소 검색, 결과 정규화·중복 제거, 결과 DOM,

@@ -1,85 +1,59 @@
-# Kakao QGIS Bridge Usage
+# 사용 가이드 — 1.3
 
-이 문서는 스크린샷 기준으로 주요 기능 흐름을 빠르게 확인하기 위한 사용 가이드입니다. API 키 설정과 설치 절차는 저장소 루트의 [README.md](../README.md)를 먼저 참고하세요.
+설치와 키 등록은 [설정 가이드](setup.md), 버전별 변경은 [릴리즈 노트](../CHANGELOG.md)를 참고하세요.
 
-## 플러그인 메뉴
+## 탐색창과 언어
 
-`플러그인 > Kakao QGIS Bridge` 메뉴에서 Dock 뷰어 실행, 외부 브라우저 연동 창 실행, API 키 설정, 경로 이력 불러오기와 저장/내보내기 기능을 사용할 수 있습니다.
+상단은 **탐색창 접기/펼치기 → 배치 선택 → EN/KR → 전체화면** 순서입니다. 검색과 경로 옵션을 적은 줄로 묶어 지도 공간을 확보했습니다. 좁은 창에서는 일부 버튼이 다음 줄로 이동합니다.
 
-![Plugin menu](screenshots/01-plugin-menu.png)
+**EN**은 영어로, **KR**은 한국어로 전환하고 선택을 뷰어 저장소에 보관합니다. 내장 뷰어와 외부 브라우저는 언어를 각각 선택할 수 있습니다. 저장소를 사용할 수 없으면 현재 화면에서만 전환됩니다.
 
-## Dock 기본 화면
+주요 버튼·지도 종류·경로 유형·입력 안내·옵션 라벨을 전환합니다. SDK 지도 지명, QGIS 메뉴·대화상자 및 일부 상태 메시지는 전환 대상이 아닙니다. **현위치 / Here**는 GPS 위치가 아니라 **현재 카카오 지도 중심**을 입력합니다.
 
-QGIS 4 또는 Qt WebEngine을 사용할 수 있는 환경에서는 `Kakao Map / Roadview` Dock 안에서 Kakao Map, Roadview, 검색, 경로 탐색 UI가 함께 표시됩니다.
+탐색창을 접어도 입력·검색 결과는 유지되고 배치·언어·전체화면은 상단에 남습니다. 분리 도크는 화면에 맞춘 초기 크기를 사용하고 이후 사용자 조절 크기를 유지합니다.
 
-![Dock basic view](screenshots/02-dock-basic.png)
+## 지도와 검색
 
-## 위치 동기화
+검색창에 장소·주소를 입력하고 결과를 선택하면 QGIS와 지도·Roadview가 함께 이동합니다. 결과 목록은 접었다가 다시 열 수 있고 새 검색은 결과를 펼칩니다.
 
-QGIS 캔버스를 이동하면 중심 좌표가 EPSG:4326으로 변환되어 Kakao Map과 Roadview로 전달됩니다. 반대로 Kakao 지도 드래그 또는 Roadview 이동도 QGIS 캔버스에 반영됩니다.
+지도 종류는 **일반지도 / Roadmap**, **항공영상 / Aerial**, **항공영상+지명 / Aerial + labels**입니다. **로드뷰 도로 표시 / Show Roadview roads**는 촬영 도로 선을 켜고 끕니다. 이 설정은 QGIS 배경지도를 바꾸지 않습니다.
 
-QGIS와 Kakao Map은 확대·축소도 양방향으로 연동됩니다. 플러그인 지도 위에서 휠을 돌리거나 확대·축소 버튼을 사용할 수 있습니다. 줌만 할 때는 Roadview 촬영 위치와 위치 마커를 그대로 유지하고, 지도를 드래그하거나 Roadview 내부에서 이동하면 위치도 따라갑니다. 카카오의 가장 가까운 확대 단계로 맞추므로 임의 QGIS 축척과 정확히 일치하지 않을 수 있으며, 카카오 일반지도 단계 1~14와 QGIS 축척 잠금의 영향을 받습니다.
+QGIS와 카카오 지도는 이동·줌을 양방향 연동합니다. 줌만 하면 Roadview 촬영 위치를 유지하고 지도 드래그나 Roadview 내부 이동 시 위치를 갱신합니다. 카카오 일반지도 단계 1~14와 QGIS 축척 잠금의 영향을 받습니다. [줌·Roadview 정책](zoom-roadview-policy.md)을 참고하세요.
 
-![Position synchronization](screenshots/03-position-sync.png)
+## 경로 입력과 안내
 
-Roadview가 로드되면 현재 위치와 방향 정보가 상태바에 표시되고, QGIS의 `Kakao Roadview Position` 메모리 레이어도 갱신됩니다.
+1. 출발·도착에 주소·장소 또는 좌표를 입력합니다. 좌표는 `경도,위도`와 `위도,경도`를 지원합니다. 예: `126.9786567,37.566826`.
+2. **현위치 / Here**로 지도 중심을 지정하거나 검색 후보를 선택해 위치를 확정합니다.
+3. **+ 경유지 / + Waypoint**로 최대 5개를 추가합니다. 화살표로 순서를 바꾸거나 출발·도착을 교환할 수 있습니다.
+4. **추천 경로 / Recommended**, **최단 시간 / Fastest**, **최단 거리 / Shortest**를 선택하고 필요하면 회피·차량 옵션을 설정합니다.
+5. **경로 생성 / Create route**를 누릅니다. 최초 실행 시 REST API 키를 등록합니다.
 
-![Roadview position sync](screenshots/05-roadview-layer.png)
+QGIS에 `Kakao Mobility Route`, `Kakao Route Points`, `Kakao Route Guidance` 임시 레이어가 표시됩니다. 안내 항목을 선택하면 해당 위치를 지도·Roadview와 QGIS에서 함께 확인할 수 있습니다.
 
-## 장소와 주소 검색
+탐색 전 핀은 입력 위치를, 결과 핀은 API 안내 위치를 사용합니다. 원래 입력 좌표는 편집·재검색·이력 저장용으로 유지합니다. 경유 안내가 없으면 해당 결과 핀을 생략합니다. 안내 레이어의 작은 출발·도착·경유 핀은 큰 Route Points 핀과 겹치지 않게 숨깁니다.
 
-상단 검색창에서 장소명이나 주소를 입력하면 Kakao Local 검색 결과가 표시됩니다. 결과를 선택하면 Kakao Map, Roadview, QGIS 캔버스가 함께 이동합니다.
+## 이력과 내보내기
 
-![Local search input and results](screenshots/04-local-search_search_input.png)
+생성한 경로는 현재 세션의 **이력 / History**에 누적됩니다. 항목 선택은 결과를 표시하고 **불러오기 / Load**는 입력과 옵션을 복원합니다. 개별·전체 삭제, 선택 저장과 개별 내보내기를 지원합니다.
 
-## 경로 입력
+QGIS 메뉴에서 전체 세션을 GeoPackage, GeoJSON, Shapefile, GPX로 내보낼 수 있습니다. GeoJSON·Shapefile에는 경로·안내 파일과 QML 스타일이 생성됩니다. GPX의 QML이 같은 폴더에 있으면 **GPX 스타일 적용해서 불러오기...**를 사용하세요.
 
-경로 입력 영역에서는 출발지, 도착지, 최대 5개 경유지, 경로 유형, 회피 옵션, 차량 설정을 지정할 수 있습니다.
+이력은 자동 저장되지 않습니다. 같은 GeoPackage에 다시 저장하면 기존 `history_id`는 건너뛰고 새 이력을 추가합니다. GeoPackage·GeoJSON·Shapefile은 이력으로 다시 불러오고 GPX는 레이어로 불러옵니다. 파일 전체의 좌표계·스키마·연결·충돌 검증을 통과해야 이력에 반영됩니다. [내보내기 검증과 형식 제한](export-validation.md)을 참고하세요.
 
-![Route input](screenshots/06-route-input.png)
+프로젝트를 바꾸면 현재 표시·입력·진행 중 요청은 초기화되지만 세션 이력은 유지됩니다. 이력을 선택하면 새 프로젝트에 다시 표시합니다.
 
-## 경로 결과
+## GPKG 경로와 요금 비교
 
-`경로 생성`을 실행하면 QGIS에 `Kakao Mobility Route`, `Kakao Route Points`, `Kakao Route Guidance` 임시 레이어가 생성됩니다. Dock에는 경로 요약과 순서별 안내 목록이 표시됩니다.
+**GPKG 경로 비교...**에서 카카오·네이버 파일을 A/B로 열어 경로를 선택합니다. 거리·예측 시간·조회 시점과 B−A 차이를 확인하고 두 경로를 파랑 실선/주황 점선으로 표시합니다. 원본 파일은 수정하지 않습니다.
 
-탐색 전 핀은 입력 좌표를, 성공 후에는 API 출발·도착·경유 안내 위치를 표시합니다. 출발·도착 안내가 없으면 경로 선형의 양 끝을 사용하고, 경유 안내가 없으면 해당 결과 핀은 생략합니다. 원래 입력 좌표는 편집·재검색·이력 저장용으로 보존됩니다. 현재 안내 레이어의 작은 출발·도착·경유 핀은 숨겨 큰 Route Points 핀과의 중복을 없애며 회전·유턴 안내와 원본 안내 데이터는 유지합니다. 이전 스크린샷과 핀 표시가 다를 수 있습니다.
+출발·도착과 방문 순서별 경유지를 20m 기준으로 비교합니다. 위치 일치는 교통 상황·차량·회피 조건 일치를 뜻하지 않습니다. 통행료와 예상 택시요금은 저장된 값만 비교하며 누락은 정보 없음으로 표시합니다. [경로 비교](route-comparison.md)와 [요금 비교](fare-comparison.md)를 참고하세요.
 
-![Route result](screenshots/07-route-result.png)
+## 외부 브라우저와 과거 촬영
 
-안내 목록의 항목을 선택하면 해당 안내 지점이 QGIS와 Kakao Viewer에서 함께 포커스됩니다.
+WebEngine/WebChannel이 없으면 **외부 연동 창 열기**를 사용합니다. 내장 뷰어에서도 하단 외부 연동 버튼으로 브라우저를 열 수 있습니다. 서버는 8081을 우선 사용하고 사용 중이면 8082를 사용합니다. SDK 도메인에 두 주소를 모두 등록하세요.
 
-![Guidance selection](screenshots/08-guidance-selection.png)
+이전 세션의 탭은 닫고 플러그인 버튼으로 새 창을 여세요. **카카오맵에서 과거 촬영 선택**은 공식 카카오맵 Roadview를 엽니다. 플러그인 API에서 과거 촬영 목록을 제공하지는 않습니다.
 
-## 경로 이력
+## 화면 자료
 
-생성한 경로는 현재 QGIS 세션 이력에 누적됩니다. 이력 탭에서 선택, 불러오기, 삭제, 내보내기 작업을 수행할 수 있습니다.
-
-![Route history](screenshots/09-route-history.png)
-
-이력 내보내기는 전체 세션 또는 선택한 이력 1건을 대상으로 GeoPackage, GeoJSON, Shapefile, GPX 형식을 지원합니다.
-
-![Route history export](screenshots/11-export-files.png)
-
-## GPX 스타일 적용 불러오기
-
-GPX와 함께 생성된 QML 스타일 파일이 같은 폴더에 있으면 `GPX 스타일 적용해서 불러오기...` 메뉴로 트랙, 루트, 웨이포인트 레이어를 스타일과 함께 불러올 수 있습니다.
-
-![GPX load menu](screenshots/12-gpx-load-menu.png)
-
-![GPX load output](screenshots/12-gpx-load-output.png)
-
-## 레이아웃과 전체화면
-
-지도와 Roadview는 상하/좌우 배치로 전환할 수 있고, 분할선으로 영역 크기를 조절할 수 있습니다.
-
-![Map left layout](screenshots/13-layout-map-left.png)
-
-뷰어의 전체화면 버튼은 QGIS Dock 모드와 외부 브라우저 모드에서 각각 전체화면 전환에 사용됩니다.
-
-![Fullscreen toggle](screenshots/14-fullscreen.png)
-
-## 외부 브라우저 연동
-
-QGIS 3에서 Qt WebEngine을 사용할 수 없거나 별도 브라우저 창이 필요한 경우 `외부 브라우저 연동 창 열기...` 또는 Dock 하단의 `외부 브라우저 연동창` 버튼을 사용합니다. 외부 Viewer는 기본 `http://localhost:8081/`의 로컬 브리지 API를 통해 QGIS와 동기화됩니다. 8081이 사용 중이면 8082를 자동으로 사용하므로 QGIS 3·4의 외부 연동을 동시에 실행할 수 있습니다. Kakao Developers의 `[플랫폼 키] > [JavaScript 키] > [JavaScript SDK 도메인]`에 `http://localhost:8081`과 `http://localhost:8082`를 모두 등록하세요. 제품 링크의 웹 도메인 등록과는 별도이며, 키 재발급은 필요하지 않습니다.
-
-![External browser integration](screenshots/10-external-browser.png)
+[기존 스크린샷](screenshots/README.md)은 1.3 압축 배치·EN/KR·현위치/Here 변경 전 자료입니다. 정확한 조작 위치와 문구는 위 설명을 기준으로 확인하세요.

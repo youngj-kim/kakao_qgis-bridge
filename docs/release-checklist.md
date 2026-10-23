@@ -1,194 +1,33 @@
-# GitHub and ZIP Distribution Checklist
+# 1.3 배포 체크리스트
 
-Distribution scope (2026-10-08): GitHub source and ZIP files. The user has
-excluded uploading to the official QGIS plugin repository. Historical upload
-items below are retained as past planning, not current tasks.
+기준일: 2026-10-23. 배포 대상은 GitHub 소스와 ZIP입니다. 공식 QGIS 플러그인 저장소 업로드는 현재 범위에 포함하지 않습니다.
 
-## Current 1.2.1 status — 2026-10-12
+## 확인 완료
 
-### Release-review candidate (supersedes the earlier test ZIP below)
+- [x] 메타데이터 버전 1.3, EN/KR 전환과 압축 탐색창 반영
+- [x] 사용자 확인: QGIS 3.44 기능 확인 및 QGIS 4 기존 기능 재확인
+- [x] 코드 커밋 `1a677f7` 기준 Python 81개·JavaScript 64개 테스트 통과
+- [x] JavaScript 문법과 Git 공백 검사 통과
 
-- [x] Clean user-facing README; record development/test notes in refactoring-progress.md.
-- [x] Add versioned GPKG comparison changelog; ordered 20m waypoint matching, explicit styles and temporary-layer policy.
-- [x] Defer comparison geometry reading to selected routes and detect ordinary source-file changes.
-- [x] Make project reset informational, preserve Ctrl/Meta wheel defaults, remove unused imports and normalize text to LF.
-- [x] Keep the agreed missing-waypoint-result-pin omission policy unchanged.
-- [x] Run Python 75 / JavaScript 49 tests, syntax/compile checks and Bandit with no findings.
-- [ ] Manually install `dist/kakao_qgis_bridge-1.2.1-release-review-test.zip` in QGIS 3 and 4; confirm SDK interaction and browser Ctrl+wheel behavior.
+위 검사는 코드 커밋 기준입니다. 아래 최종 패키지·문서 확인과 구분합니다.
 
-This ZIP replaces neither an earlier immutable test ZIP nor its historical confirmation.
-Source commit/push, CI and final official upload remain separate release steps.
+## 최종 배포 순서
 
-### Post-review structural candidate (not yet manually confirmed)
+- [x] 현재 문서 및 아카이브 링크 검증 (Markdown 34개)
+- [x] 문서 포함 ZIP 재생성, 버전·소스 일치·무결성·키/캐시 제외 확인
+- [x] 문서 정리 커밋 생성 (이 체크리스트를 포함한 문서 정리 커밋)
+- [ ] 최종 ZIP 설치 후 버전·문서 포함과 실행 확인
+- [ ] 원격 push 및 해당 커밋의 Windows/Ubuntu CI 확인
+- [ ] 최종 커밋의 태그·GitHub Release 생성과 ZIP 첨부
 
-- [x] Extract RouteController, ViewerAdapter and viewer_sync.js without changing file schemas or bridge contracts.
-- [x] Run Python 75 / JavaScript 48 tests and Bandit with no findings.
-- [x] Run QGIS 3.44.14/4.2.2 route-controller, pin, zoom, bridge, project, history/failure, export and display regressions.
-- [ ] Manually install `dist/kakao_qgis_bridge-1.2.1-refactoring-complete-test.zip` in QGIS 3 and 4 and confirm actual SDK interaction.
-- [ ] Commit/push this structural candidate and confirm its CI before final distribution.
+체크리스트 작성은 태그·Release 생성을 뜻하지 않습니다. 새 ZIP 설치 확인을 이전 코드 기능 확인으로 대체하지 않습니다.
 
-The following confirmations refer to the earlier fb5c261 code/clean-pins ZIP.
-They are not manual approval of this newer structural candidate. See refactoring-finalization.md.
+## 릴리즈 노트 관리
 
-This section supersedes earlier candidate checklists. Code is pushed to main at
-fb5c261. No release/tag or official repository upload is implied by a source push.
+[CHANGELOG 1.3](../CHANGELOG.md#13--2026-10-23)을 원본으로 사용합니다. GitHub Release 본문에는 해당 항목과 설치 ZIP을 안내합니다. 별도 RELEASE_NOTES.md에 내용을 중복 작성하지 않습니다.
 
-- [x] Complete the planned history/export/layer/viewer controller refactoring.
-- [x] Add bidirectional QGIS/Kakao Map zoom while retaining Roadview position on zoom-only changes.
-- [x] Align route result/history pins with API guidance positions and hide duplicate current guidance pins.
-- [x] Run Python 69 and JavaScript 45 tests before the code commit.
-- [x] Run QGIS 3.44.14/4.2.2 zoom, bridge, route-pin and display-layer runtime checks.
-- [x] Record user confirmations: import/export, search/map/Roadview, route editing/search, bidirectional zoom and duplicate-pin cleanup. These were incremental checks, not a fresh exhaustive final-package matrix.
-- [x] Verify the tested clean-pins ZIP: 45 files, source agreement and settings/cache excluded.
-- [x] Commit/push the fixes: fb5c261, main.
-- [x] Update current README, usage, metadata changelog and validation documentation; retain historical records.
-- [ ] Confirm CI for fb5c261; the earlier CI result below does not establish this commit's status.
-- [ ] Validate declared minimum QGIS 3.34 in a runnable environment.
-- [ ] Confirm SDK terms/quota suitability; no approval is inferred from successful operation.
-- [ ] Confirm the final distribution ZIP after documentation updates; create release/tag only on request.
+## 남은 검증과 자료
 
-User-confirmed installation ZIP: `dist/kakao_qgis_bridge-1.2.1-clean-pins-test.zip`.
-SHA-256: `39f7eb58db7d713a4807e24e1147b27393f50a6b33d42e21e35d3718412711f4`.
-This immutable test ZIP predates the documentation refresh; it has not been rebuilt
-or renamed as the final distribution package. Older ZIPs are retained.
-See route-points-fix.md and zoom-roadview-policy.md for scope and limitations.
+QGIS 3.34는 선언된 최소 버전이며 실행 검증은 남아 있습니다. 기존 스크린샷은 1.3 변경 전 자료로 표시했습니다. 최신 화면 재촬영은 후속 문서 개선입니다. 실제 API 사용에는 제공처의 이용 조건과 쿼터가 적용됩니다.
 
-## Historical 1.2.1 candidate — 2026-10-08
-
-This section tracks the latest cumulative refactoring candidate. Earlier checked
-items below do not establish that this ZIP was manually installed and tested.
-
-- [x] Extract history and export UI controllers.
-- [x] Extract viewer search, guidance, history and route-input controllers.
-- [x] Review optional SDK/layout separation; retain shared synchronization state.
-- [x] Check project boundaries and late route-location callbacks.
-- [x] Run Python 62 and JavaScript 37 tests, syntax checks and compilation.
-- [x] Run QGIS 3.44.14/4.2.2 HTML assembly, bridge, project, history and export regressions.
-- [x] Run Bandit 1.9.4: no findings, no skipped files or disabled test rules.
-- [x] Update metadata, descriptions, changelog and installation notes to 1.2.1 candidate.
-- [x] Verify candidate ZIP: 45 files, integrity/source agreement and local settings/cache excluded.
-- [x] Commit/push cumulative source changes: 3e35f5a, main.
-- [x] Confirm source CI: Windows/Ubuntu success, Actions run 37752581869.
-- [ ] Manually install the latest candidate and test actual Kakao SDK in QGIS 3 and 4.
-- [ ] Validate declared minimum QGIS 3.34 when a runnable environment is available.
-- [ ] Confirm SDK terms and quota suitability for the intended use.
-- [ ] Final release/tag only after the required manual checks and a release request.
-
-Candidate: dist/kakao_qgis_bridge-1.2.1.zip.
-See route-input-refactoring.md for scope, test boundaries and the manual checklist.
-
-## 1.2.0 preparation status — 2026-10-07
-
-The checklist below this section records earlier release work. Its checked
-boxes are not evidence that all checks were repeated on the 1.2.0 ZIP.
-
-- [x] Update version, metadata changelog and root CHANGELOG.md to 1.2.0.
-- [x] Add standalone setup instructions inside the plugin ZIP and update about.
-- [x] Document both SDK domains, bridge fallback and the scope of KAKAO_MAP_BASE_URL.
-- [x] Document center-only sync, memory history, SHP loss and credential limits.
-- [x] Record actual runtime coverage: Windows QGIS 3.44.14 and 4.2.2.
-- [ ] Run the declared minimum QGIS 3.34 against this build. A leftover 3.34.12
-  directory has no Python/QGIS runtime and cannot provide execution evidence.
-  Keep the declared minimum unchanged; this does not establish incompatibility.
-- [ ] Confirm the Kakao SDK embedding terms and quota suitability.
-- [ ] Perform the final installed 1.2.0 SDK/browser check. Earlier user checks
-  and runtime regressions are recorded in refactoring-progress.md.
-- [ ] Commit/push the 1.2.0 metadata and documentation to GitHub and confirm
-  the CI result. Earlier refactoring commit: 3d9bc21 (CI passed).
-- [ ] Create a GitHub release/tag with a ZIP if a release is requested.
-
-Official QGIS plugin repository upload is outside the distribution scope.
-
-Candidate package: `dist/kakao_qgis_bridge-1.2.0.zip`.
-Package verification is recorded in refactoring-progress.md. Until the open
-items are resolved, treat it as a local release candidate.
-
-## Earlier release checklist (historical)
-
-## Repository
-
-- [x] Confirm the GitHub repository is public.
-- [x] Confirm `metadata.txt` links are reachable:
-  - [x] `homepage`
-  - [x] `repository`
-  - [x] `tracker`
-- [x] Confirm `README.md` explains installation, API keys, usage, and limits.
-- [x] Confirm `LICENSE` is present in the repository root.
-- [x] Confirm `kakao_qgis_bridge/LICENSE` is included in the plugin package.
-- [x] Confirm no API keys, account details, or local user paths are committed.
-
-## Metadata
-
-- [x] `name` is final.
-- [x] `version` is updated.
-- [x] `qgisMinimumVersion` is correct.
-- [x] `qgisMaximumVersion` is correct.
-- [x] `description` is short and accurate.
-- [x] `about` mentions Kakao API requirements and restrictions.
-- [x] `license=GPL-2.0-or-later` is present.
-- [x] `experimental=True` or `experimental=False` is intentional.
-
-## Screenshots and Docs
-
-- [x] Add screenshots under `docs/screenshots/`.
-- [x] Review screenshots for API keys, account information, and sensitive locations.
-- [x] Add representative screenshots to `README.md`.
-- [x] Move detailed walkthrough screenshots to `docs/usage.md` if README becomes too long.
-
-## Functional Smoke Test
-
-- [x] Install/use in the active QGIS development profile.
-- [x] Enable the plugin from QGIS Plugin Manager.
-- [x] Open `Kakao Map / Roadview`.
-- [x] Set Kakao JavaScript API key.
-- [x] Confirm QGIS canvas center syncs to Kakao Map and Roadview.
-- [x] Confirm Kakao Map drag syncs back to QGIS.
-- [x] Confirm Roadview movement updates the QGIS roadview position layer.
-- [x] Confirm Local place/address search works.
-- [x] Set Kakao REST API key.
-- [x] Create a route with origin and destination.
-- [x] Create a route with at least one waypoint.
-- [x] Confirm route, route points, and guidance layers are created.
-- [x] Confirm guidance list item selection focuses the matching QGIS feature.
-- [x] Save route history to GeoPackage.
-- [x] Load route history from GeoPackage.
-- [x] Export route history to GeoJSON.
-- [x] Export route history to Shapefile.
-- [x] Export route history to GPX.
-- [x] Load GPX with sidecar QML styles.
-- [x] Test external browser integration mode when available.
-- [ ] Open the external browser viewer from the plugin menu while the Dock is
-  closed and confirm QGIS-to-browser synchronization remains active.
-- [ ] Confirm an external bridge API request without the current session token
-  is rejected and does not change QGIS state.
-
-## Automated Checks
-
-- [x] Run `python -m compileall -q kakao_qgis_bridge tests`.
-- [x] Run `python -m unittest discover -s tests -v`.
-- [x] Confirm the inline viewer JavaScript parses without syntax errors.
-- [x] Run `tests/qgis_runtime_smoke.py` with the bundled Python runtimes from
-  QGIS 3.44 and QGIS 4.2.
-- [x] Create and show the real Dock widget in QGIS 3.44 and in a full QGIS 4.2
-  desktop application instance.
-- [x] Restart QGIS 4.2 with the installed test build and confirm the plugin
-  operates normally in the user's desktop session.
-- [x] Restart QGIS 3.44 with the installed test build and confirm the external
-  browser integration operates normally in the user's desktop session.
-- [x] Run the automated checks in CI on every pull request and release tag.
-
-## Package
-
-- [x] ZIP contains a single top-level `kakao_qgis_bridge/` folder.
-- [x] ZIP excludes `.git`, `.agents`, `.codex`, `__pycache__`, `.pytest_cache`, and local settings.
-- [x] ZIP excludes `kakao_qgis_bridge/settings.json`.
-- [x] ZIP excludes generated test/output files.
-- [x] ZIP size is below the QGIS repository package limit.
-- [x] Source code in the ZIP matches the public GitHub repository.
-
-## Upload
-
-- [ ] Log in to https://plugins.qgis.org/ with an OSGeo ID.
-- [ ] Upload the plugin ZIP using "Share a plugin".
-- [ ] Check the repository page for validation warnings.
-- [ ] Watch the account email or plugin page for approval/rejection feedback.
+과거 후보 ZIP과 검증 기록은 [이전 체크리스트](archive/release-checklist-1.2.md)에 보존합니다.

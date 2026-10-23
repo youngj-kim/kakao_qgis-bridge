@@ -36,6 +36,7 @@ kakao_qgis_bridge/
   settings.example.json
   web/
     kakao_viewer.html
+    viewer_language.js
     viewer_search.js
     viewer_guidance.js
     viewer_history.js
@@ -166,12 +167,25 @@ Kakao JavaScript 키, Mobility REST API 키와 WebEngine 기준 URL을 관리하
 
 ## 개발 기록과 검증 문서
 
-- [추가 리팩토링 정리와 업로드 전 확인](refactoring-finalization.md)
+- [과거 리팩토링 정리](archive/refactoring-finalization.md)
 
-- [날짜별 개발 이력](development-history.md)
-- [리팩토링 진행 기록](refactoring-progress.md)
-- [배포 체크리스트](release-checklist.md)
-- [경로 핀 위치와 중복 표시 수정](route-points-fix.md)
+- [날짜별 개발 이력](archive/development-history.md)
+- [리팩토링 진행 기록](archive/refactoring-progress.md)
+- [현재 배포 체크리스트](release-checklist.md)
+- [경로 핀 위치와 중복 표시 수정](archive/route-points-fix.md)
 - [지도 줌·로드뷰 동기화 정책](zoom-roadview-policy.md)
-- [이력 가져오기 검증](history-import-validation-review.md)
+- [이력 가져오기 검증](archive/history-import-validation-review.md)
 - [내보내기 검증](export-validation.md)
+
+## 1.3 언어 전환과 검사
+
+`viewer_language.js`는 조작부 텍스트·선택 목록·툴팁을 번역하고 언어를 저장합니다. SDK 지명과 입력값은 유지합니다. `viewer_page.py`가 내장·외부 뷰어에 같은 스크립트를 인라인 조립합니다.
+
+```shell
+python -m unittest discover -s tests -p "test_*.py" -v
+node --test tests/*.test.js
+node scripts/check_viewer_js.js
+python scripts/build_plugin.py
+```
+
+Python 검사는 로컬 브리지 소켓을 열 수 있는 환경에서 실행합니다. CI는 Windows/Ubuntu에서 검사와 ZIP 생성을 수행합니다. 이전 과정은 [아카이브](archive/README.md)에 보존합니다.

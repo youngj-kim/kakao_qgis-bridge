@@ -3,6 +3,7 @@
 import re
 
 VIEWER_SCRIPTS = {
+    "__VIEWER_LANGUAGE_SCRIPT__": "viewer_language.js",
     "__VIEWER_SEARCH_SCRIPT__": "viewer_search.js",
     "__VIEWER_GUIDANCE_SCRIPT__": "viewer_guidance.js",
     "__VIEWER_HISTORY_SCRIPT__": "viewer_history.js",

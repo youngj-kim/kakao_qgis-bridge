@@ -3,8 +3,11 @@ name=Kakao QGIS Bridge
 qgisMinimumVersion=3.34
 qgisMaximumVersion=4.99
 description=Kakao Map and Roadview viewer with bidirectional QGIS synchronization and Local search; dock or external browser depending on the QGIS runtime.
-version=1.2.2
-changelog=1.2.2
+version=1.3
+changelog=1.3
+    - User confirmed functionality in QGIS 3.44 and rechecked existing functionality in QGIS 4 (2026-10-23).
+    - Added English/Korean button switching in the viewer, with saved language preference and dynamic button updates.
+    1.2.2
     - Restore floating/docked sizes separately and refresh viewer layout after dock transitions without reloading the page.
     - Improved initial floating dock size within screen bounds and split map/Roadview using the remaining vertical space.
     - Added whole explorer panel collapse/expand, preserving inputs and results while resizing map and Roadview.

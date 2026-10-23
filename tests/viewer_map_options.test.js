@@ -52,13 +52,13 @@ test("coverage toggles independently of imagery and repeated initialization", ()
   h.initialize();
   h.roadsButton.fire("click");
   assert.equal(h.roadsButton.attributes["aria-pressed"], "true");
-  assert.match(h.roadsButton.textContent, /숨기기/);
+  assert.match(h.roadsButton.textContent, /Hide/);
   h.select("HYBRID");
   h.controller.initialize();
   assert.equal(h.typeSelect.value, "HYBRID");
   assert.equal(h.roadsButton.attributes["aria-pressed"], "true");
   h.roadsButton.fire("click");
   assert.equal(h.roadsButton.attributes["aria-pressed"], "false");
-  assert.match(h.roadsButton.textContent, /표시/);
+  assert.match(h.roadsButton.textContent, /Show/);
   assert.deepEqual(h.calls, [["add", 8], ["type", 3], ["remove", 8]]);
 });

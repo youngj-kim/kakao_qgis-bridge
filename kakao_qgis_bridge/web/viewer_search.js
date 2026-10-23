@@ -12,7 +12,7 @@ window.createKakaoSearchController = function createKakaoSearchController({
       searchResults.hidden = !expanded;
       searchResultsToggle.hidden = !hasResults;
       searchResultsToggle.setAttribute("aria-expanded", String(expanded));
-      searchResultsToggle.textContent = `검색 결과 ${resultCount}개 ${expanded ? "접기" : "펼치기"}`;
+      searchResultsToggle.textContent = `${expanded ? "Hide" : "Show"} results (${resultCount})`;
     }
 
     function clearResults() {

@@ -99,12 +99,12 @@ for (const mode of ["external", "dock"]) {
     toggle.fire("click");
     assert.equal(body.hidden, true);
     assert.equal(toggle.attributes["aria-expanded"], "false");
-    assert.match(toggle.textContent, /펼치기/);
+    assert.match(toggle.textContent, /Expand/);
     assert.equal(relayoutRequests, 4);
     toggle.fire("click");
     assert.equal(body.hidden, false);
     assert.equal(toggle.attributes["aria-expanded"], "true");
-    assert.match(toggle.textContent, /접기/);
+    assert.match(toggle.textContent, /Collapse/);
     assert.equal(relayoutRequests, 8);
     assert.equal(h.node("route-origin-input").value, "서울역");
     assert.equal(h.node("route-destination-input").value, "수원역");

@@ -21,11 +21,11 @@ window.createKakaoRouteInputController = function createKakaoRouteInputControlle
 
     function updateRouteAvoidSummary() {
       const selected = routeAvoidCheckboxes.filter((checkbox) => checkbox.checked);
-      routeAvoidToggle.textContent = `회피 ${selected.length}`;
+      routeAvoidToggle.textContent = `Avoid ${selected.length}`;
       const labels = selected.map((checkbox) => checkbox.parentElement.textContent.trim());
       routeAvoidToggle.title = labels.length
         ? `경로 회피: ${labels.join(", ")}`
-        : "경로 회피 옵션";
+        : "Route avoidance options";
     }
 
     function selectedRouteVehicleOptions() {
@@ -375,7 +375,7 @@ window.createKakaoRouteInputController = function createKakaoRouteInputControlle
       const currentButton = document.createElement("button");
       currentButton.className = "route-current";
       currentButton.type = "button";
-      currentButton.textContent = "현재 위치";
+      currentButton.textContent = "Here";
 
       const removeButton = document.createElement("button");
       removeButton.className = "route-waypoint-remove";

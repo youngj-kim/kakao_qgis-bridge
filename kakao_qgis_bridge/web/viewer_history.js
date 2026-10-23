@@ -65,7 +65,7 @@ window.createKakaoHistoryController = function createKakaoHistoryController({
 
       const loadHistoryButton = document.createElement("button");
       loadHistoryButton.type = "button";
-      loadHistoryButton.textContent = "이력 불러오기";
+      loadHistoryButton.textContent = "Load history";
       loadHistoryButton.addEventListener("click", () => {
         if (!getBridge() || typeof getBridge().loadRouteHistoryFile !== "function") {
           setStatus("경로 이력 불러오기 기능을 사용할 수 없습니다.");
@@ -77,8 +77,8 @@ window.createKakaoHistoryController = function createKakaoHistoryController({
       const selectAllButton = document.createElement("button");
       selectAllButton.type = "button";
       selectAllButton.textContent = selectedIds.length === routeHistory.length && routeHistory.length
-        ? "전체 해제"
-        : "전체 선택";
+        ? "Deselect all"
+        : "Select all";
       selectAllButton.disabled = !routeHistory.length;
       selectAllButton.addEventListener("click", () => {
         if (selectedRouteHistoryIds.size === routeHistory.length) {
@@ -96,7 +96,7 @@ window.createKakaoHistoryController = function createKakaoHistoryController({
 
       const deleteAllButton = document.createElement("button");
       deleteAllButton.type = "button";
-      deleteAllButton.textContent = "전체 삭제";
+      deleteAllButton.textContent = "Delete all";
       deleteAllButton.disabled = !routeHistory.length;
       deleteAllButton.addEventListener("click", () => {
         if (!getBridge() || typeof getBridge().deleteAllRouteHistories !== "function") {
@@ -108,7 +108,7 @@ window.createKakaoHistoryController = function createKakaoHistoryController({
 
       const exportSelectedButton = document.createElement("button");
       exportSelectedButton.type = "button";
-      exportSelectedButton.textContent = "선택 저장";
+      exportSelectedButton.textContent = "Save selected";
       exportSelectedButton.disabled = !selectedIds.length;
       exportSelectedButton.addEventListener("click", () => {
         const historyIds = selectedRouteHistoriesFromCurrentList();
@@ -213,9 +213,9 @@ window.createKakaoHistoryController = function createKakaoHistoryController({
         const actions = document.createElement("span");
         actions.className = "history-actions";
         [
-          ["불러오기", "loadRouteHistory"],
-          ["삭제", "deleteRouteHistory"],
-          ["내보내기", "exportRouteHistory"]
+          ["Load", "loadRouteHistory"],
+          ["Delete", "deleteRouteHistory"],
+          ["Export", "exportRouteHistory"]
         ].forEach(([label, bridgeMethod]) => {
           const button = document.createElement("button");
           button.type = "button";

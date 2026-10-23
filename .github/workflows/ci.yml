@@ -29,7 +29,7 @@ jobs:
       - name: Validate viewer JavaScript
         run: node scripts/check_viewer_js.js
       - name: Test viewer and external bridge client
-        run: node --test tests/external_bridge_client.test.js tests/viewer_roadview_sync.test.js tests/viewer_search.test.js tests/viewer_guidance.test.js tests/viewer_history.test.js tests/viewer_page.test.js tests/viewer_route_input.test.js
+        run: node --test tests/*.test.js
       - name: Build plugin ZIP
         run: python scripts/build_plugin.py
       - uses: actions/upload-artifact@v4

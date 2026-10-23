@@ -147,8 +147,8 @@ window.createKakaoGuidanceController = function createKakaoGuidanceController({
       routeGuidanceSummaryText.dataset.guidanceSummary = summaryParts.join(" · ");
       routeGuidancePanel.dataset.collapsed = "false";
       routeGuidanceToggle.textContent = "−";
-      routeGuidanceToggle.title = "경로 안내 접기";
-      routeGuidanceToggle.setAttribute("aria-label", "경로 안내 접기");
+      routeGuidanceToggle.title = "Collapse directions";
+      routeGuidanceToggle.setAttribute("aria-label", "Collapse directions");
 
       guides.forEach((guide) => {
         const item = document.createElement("button");
@@ -178,7 +178,7 @@ window.createKakaoGuidanceController = function createKakaoGuidanceController({
           formatGuidanceDistance(Number(guide.distance_m)),
           formatGuidanceDuration(Number(guide.duration_s))
         ].filter(Boolean);
-        meta.textContent = metaParts.length ? metaParts.join(" · ") : "현재 위치";
+        meta.textContent = metaParts.length ? metaParts.join(" · ") : "Map center";
 
         copy.append(title, meta);
         item.append(sequence, icon, copy);

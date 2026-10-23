@@ -24,7 +24,7 @@
       else map.addOverlayMapTypeId(overlay);
       showRoads = !showRoads;
       roadsButton.setAttribute("aria-pressed", String(showRoads));
-      roadsButton.textContent = showRoads ? "로드뷰 도로 숨기기" : "로드뷰 도로 표시";
+      roadsButton.textContent = showRoads ? "Hide Roadview roads" : "Show Roadview roads";
     });
     return {
       initialize() {

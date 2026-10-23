@@ -28,7 +28,7 @@ test("results collapse and reopen without another API call or losing selection",
   const result = h.searchResults.children[0];
   assert.equal(h.searchResultsToggle.hidden, false);
   assert.equal(h.searchResultsToggle.attributes["aria-expanded"], "true");
-  assert.match(h.searchResultsToggle.textContent, /1개 접기/);
+  assert.match(h.searchResultsToggle.textContent, /Hide results \(1\)/);
   h.searchResultsToggle.fire("click");
   assert.equal(h.searchResults.hidden, true);
   assert.equal(h.searchResultsToggle.attributes["aria-expanded"], "false");
@@ -56,7 +56,7 @@ test("new results expand; clear/cancel discard cached results and stale replies"
   h.places[1].callback([], "OK");
   h.addresses[1].callback([], "OK");
   assert.equal(h.searchResults.hidden, false);
-  assert.match(h.searchResultsToggle.textContent, /0개 접기/);
+  assert.match(h.searchResultsToggle.textContent, /Hide results \(0\)/);
   h.searchClear.fire("click");
   assert.equal(h.searchResultsToggle.hidden, true);
   assert.equal(h.searchResults.children.length, 0);

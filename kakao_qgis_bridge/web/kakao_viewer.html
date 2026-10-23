@@ -191,8 +191,8 @@
 
     #search-form {
       display: grid;
-      grid-template-areas: "query submit layout fullscreen clear";
-      grid-template-columns: minmax(0, 1fr) auto auto 34px 34px;
+      grid-template-areas: "query submit layout language fullscreen clear";
+      grid-template-columns: minmax(0, 1fr) auto auto auto 34px 34px;
       gap: 6px;
     }
 
@@ -255,6 +255,14 @@
       color: #1f2428;
       font: inherit;
       cursor: pointer;
+    }
+
+    #search-form #viewer-language-toggle {
+      grid-area: language;
+      height: 34px;
+      min-width: 42px;
+      padding: 0 9px;
+      font-size: 12px;
     }
 
     #viewer-layout {
@@ -897,6 +905,14 @@
       white-space: nowrap;
     }
 
+    .viewer-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 0 0 auto;
+    }
+
+    #viewer-language-toggle,
     #open-history,
     #open-external-viewer {
       flex: 0 0 auto;
@@ -910,12 +926,14 @@
       cursor: pointer;
     }
 
+    #viewer-language-toggle,
     #open-external-viewer {
       border: 1px solid #aeb4b8;
       background: #ffffff;
       color: #1f2428;
     }
 
+    #viewer-language-toggle:hover,
     #open-external-viewer:hover {
       background: #edf2f7;
     }
@@ -970,7 +988,7 @@
       #search-form {
         grid-template-areas:
           "query submit fullscreen clear"
-          "layout layout layout layout";
+          "layout layout layout language";
         grid-template-columns: minmax(0, 1fr) 58px 34px 34px;
       }
 
@@ -1015,28 +1033,75 @@
       }
 
       #open-history,
-      #open-external-viewer {
+      .viewer-actions {
         width: 100%;
       }
+
+      .viewer-actions #open-external-viewer {
+        flex: 1 1 auto;
+        width: auto;
+      }
+    }
+
+    /* Compact explorer: settings share the header; inputs retain useful width. */
+    #explorer-toolbar {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto 34px;
+      align-items: center;
+      gap: 6px;
+    }
+    #explorer-toolbar #explorer-toggle {
+      width: auto;
+      height: 32px;
+      margin: 0;
+      padding: 0 9px;
+      white-space: nowrap;
+    }
+    #explorer-toolbar #viewer-layout { width: 100%; min-width: 0; height: 32px; grid-area: auto; }
+    #explorer-toolbar #viewer-language-toggle { height: 32px; min-width: 42px; }
+    #explorer-toolbar #fullscreen-toggle { grid-area: auto; height: 32px; }
+    #explorer-body { margin-top: 4px; }
+    #search-form {
+      grid-template-areas: "query submit clear";
+      grid-template-columns: minmax(0, 1fr) 58px 34px;
+      gap: 4px;
+    }
+    #search-panel { padding: 5px 8px; }
+    #route-controls { grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px; margin-top: 4px; }
+    #route-options { grid-template-columns: auto minmax(0, 1fr) auto auto auto; gap: 4px; }
+    #route-add-waypoint { grid-column: auto; }
+    #route-waypoints:empty { display: none; }
+    #route-origin-current, #route-destination-current { grid-column: auto; }
+    #route-actions { grid-column: 1 / -1; }
+    @media (max-width: 420px) {
+      #explorer-toolbar { gap: 4px; grid-template-columns: auto minmax(0, 1fr) 38px 30px; }
+      #explorer-toolbar #explorer-toggle { padding: 0 5px; font-size: 11px; }
+      #explorer-toolbar #viewer-language-toggle { min-width: 0; padding: 0 5px; }
+      #route-options { grid-template-columns: auto minmax(0, 1fr) auto auto; }
+      #route-add-waypoint { grid-column: 2 / -1; }
     }
   </style>
 </head>
 <body>
   <main id="viewer" class="layout-map-top">
     <header id="search-panel">
-      <button id="explorer-toggle" type="button" aria-controls="explorer-body" aria-expanded="true">탐색창 접기 ▴</button>
-      <div id="explorer-body">
-      <form id="search-form" role="search">
-        <input id="search-query" type="search" aria-label="주소 또는 장소 검색" placeholder="주소 또는 장소 검색" autocomplete="off" disabled>
-        <button id="search-submit" type="submit" disabled>검색</button>
+      <div id="explorer-toolbar">
+      <button id="explorer-toggle" type="button" aria-controls="explorer-body" aria-expanded="true">Collapse ▴</button>
         <select id="viewer-layout" aria-label="지도와 로드뷰 배치">
           <option value="map-top">지도 위 / 로드뷰 아래</option>
           <option value="roadview-top">로드뷰 위 / 지도 아래</option>
           <option value="map-left">지도 좌 / 로드뷰 우</option>
           <option value="roadview-left">로드뷰 좌 / 지도 우</option>
         </select>
-        <button id="fullscreen-toggle" type="button" title="전체화면 전환" aria-label="전체화면 전환">⛶</button>
-        <button id="search-clear" type="button" title="검색 지우기" aria-label="검색 지우기" disabled>×</button>
+        <button id="viewer-language-toggle" type="button" title="Switch buttons to English" aria-label="Switch buttons to English">EN</button>
+        <button id="fullscreen-toggle" type="button" title="Toggle fullscreen" aria-label="Toggle fullscreen">⛶</button>
+      </div>
+      <div id="explorer-body">
+      <form id="search-form" role="search">
+        <input id="search-query" type="search" aria-label="주소 또는 장소 검색" placeholder="주소 또는 장소 검색" autocomplete="off" disabled>
+        <button id="search-submit" type="submit" disabled>Search</button>
+
+        <button id="search-clear" type="button" title="Clear search" aria-label="Clear search" disabled>×</button>
       </form>
       <div id="map-options" aria-label="지도 표시 설정">
         <label for="map-type">지도</label>
@@ -1045,8 +1110,8 @@
           <option value="SKYVIEW">항공영상</option>
           <option value="HYBRID">항공영상+지명</option>
         </select>
-        <button id="roadview-roads-toggle" type="button" aria-pressed="false" title="로드뷰 촬영 도로 표시 켜기/끄기" disabled>로드뷰 도로 표시</button>
-        <button id="search-results-toggle" type="button" aria-controls="search-results" aria-expanded="false" hidden>검색 결과 펼치기</button>
+        <button id="roadview-roads-toggle" type="button" aria-pressed="false" title="Toggle Roadview roads" disabled>Show Roadview roads</button>
+        <button id="search-results-toggle" type="button" aria-controls="search-results" aria-expanded="false" hidden>Show results</button>
       </div>
       <div id="route-controls" aria-label="경로 탐색">
         <div id="route-options">
@@ -1056,18 +1121,18 @@
             <option value="TIME">최단 시간</option>
             <option value="DISTANCE">최단 거리</option>
           </select>
-          <button id="route-avoid-toggle" type="button" title="경로 회피 옵션" aria-expanded="false" disabled>회피 0</button>
-          <button id="route-vehicle-toggle" type="button" title="차량 설정" aria-expanded="false" disabled>차량</button>
-          <button id="route-add-waypoint" type="button" title="경유지 추가" disabled>+ 경유지</button>
+          <button id="route-avoid-toggle" type="button" title="Route avoidance options" aria-expanded="false" disabled>Avoid 0</button>
+          <button id="route-vehicle-toggle" type="button" title="Vehicle settings" aria-expanded="false" disabled>Vehicle</button>
+          <button id="route-add-waypoint" type="button" title="Add waypoint" disabled>+ Waypoint</button>
         </div>
-        <div id="route-avoid-options" aria-label="경로 회피 옵션" hidden>
+        <div id="route-avoid-options" aria-label="Route avoidance options" hidden>
           <label class="route-avoid-option"><input type="checkbox" value="toll">유료도로</label>
           <label class="route-avoid-option"><input type="checkbox" value="motorway">자동차전용도로</label>
           <label class="route-avoid-option"><input type="checkbox" value="ferries">페리</label>
           <label class="route-avoid-option"><input type="checkbox" value="schoolzone">어린이보호구역</label>
           <label class="route-avoid-option"><input type="checkbox" value="uturn">유턴</label>
         </div>
-        <div id="route-vehicle-options" aria-label="차량 설정" hidden>
+        <div id="route-vehicle-options" aria-label="Vehicle settings" hidden>
           <label class="route-vehicle-label" for="route-car-type">차종</label>
           <select id="route-car-type">
             <option value="1">소형</option>
@@ -1088,26 +1153,26 @@
         </div>
         <label class="route-label" for="route-origin-input">출발</label>
         <input id="route-origin-input" class="route-input" type="text" placeholder="주소·장소 또는 경도,위도" autocomplete="off" disabled>
-        <button id="route-origin-current" class="route-current" type="button" title="현재 지도 중심을 출발지로 사용" disabled>현재 위치</button>
+        <button id="route-origin-current" class="route-current" type="button" title="Use map center as origin" disabled>Here</button>
         <div id="route-waypoints" aria-label="경유지 목록"></div>
         <label class="route-label" for="route-destination-input">도착</label>
         <input id="route-destination-input" class="route-input" type="text" placeholder="주소·장소 또는 경도,위도" autocomplete="off" disabled>
-        <button id="route-destination-current" class="route-current" type="button" title="현재 지도 중심을 도착지로 사용" disabled>현재 위치</button>
+        <button id="route-destination-current" class="route-current" type="button" title="Use map center as destination" disabled>Here</button>
         <div id="route-actions">
-          <button id="route-create" type="button" disabled>경로 생성</button>
-          <button id="route-history-open" type="button" title="경로 이력 열기" disabled>이력</button>
-          <button id="route-swap" type="button" title="출발지와 도착지 바꾸기" aria-label="출발지와 도착지 바꾸기" disabled>⇅</button>
-          <button id="route-reset" type="button" title="경로 입력 초기화" aria-label="경로 입력 초기화" disabled>×</button>
+          <button id="route-create" type="button" disabled>Create route</button>
+          <button id="route-history-open" type="button" title="Open route history" disabled>History</button>
+          <button id="route-swap" type="button" title="Swap origin and destination" aria-label="Swap origin and destination" disabled>⇅</button>
+          <button id="route-reset" type="button" title="Reset route" aria-label="Reset route" disabled>×</button>
         </div>
       </div>
       <section id="route-guidance-panel" aria-label="경로 안내" data-collapsed="false" hidden>
         <div id="route-guidance-summary">
           <div id="route-panel-tabs" role="tablist" aria-label="경로 정보">
-            <button id="route-guidance-tab" class="route-panel-tab is-active" type="button" role="tab" aria-selected="true">안내</button>
-            <button id="route-history-tab" class="route-panel-tab" type="button" role="tab" aria-selected="false">이력</button>
+            <button id="route-guidance-tab" class="route-panel-tab is-active" type="button" role="tab" aria-selected="true">Directions</button>
+            <button id="route-history-tab" class="route-panel-tab" type="button" role="tab" aria-selected="false">History</button>
           </div>
           <strong id="route-guidance-summary-text"></strong>
-          <button id="route-guidance-toggle" type="button" title="경로 안내 접기" aria-label="경로 안내 접기">−</button>
+          <button id="route-guidance-toggle" type="button" title="Collapse directions" aria-label="Collapse directions">−</button>
         </div>
         <div id="route-guidance-list" role="listbox" aria-label="순서별 경로 안내"></div>
         <div id="route-history-list" role="listbox" aria-label="경로 이력" hidden></div>
@@ -1117,13 +1182,15 @@
     </header>
     <section id="map" aria-label="Kakao map"></section>
     <div id="view-splitter" role="separator" aria-label="지도와 로드뷰 크기 조절" aria-orientation="horizontal">
-      <button id="split-toggle" type="button" title="지도와 로드뷰 위치 전환" aria-label="지도와 로드뷰 위치 전환">⇅</button>
+      <button id="split-toggle" type="button" title="Swap map and Roadview" aria-label="Swap map and Roadview">⇅</button>
     </div>
     <section id="roadview" aria-label="Kakao roadview"></section>
     <footer id="status-bar">
       <output id="status">Initializing Kakao Map viewer...</output>
-      <button id="open-external-viewer" type="button" disabled>외부 브라우저 연동창</button>
-      <button id="open-history" type="button" disabled>카카오맵에서 과거 촬영 선택</button>
+      <div class="viewer-actions">
+        <button id="open-external-viewer" type="button" disabled>Open linked browser</button>
+      </div>
+      <button id="open-history" type="button" disabled>Historical imagery in Kakao Map</button>
     </footer>
   </main>
 
@@ -1144,6 +1211,9 @@ __VIEWER_SYNC_SCRIPT__
   </script>
   <script>
 __VIEWER_MAP_OPTIONS_SCRIPT__
+  </script>
+  <script>
+__VIEWER_LANGUAGE_SCRIPT__
   </script>
   <script>
     const kakaoAppKey = __KAKAO_APP_KEY_JSON__;
@@ -1294,7 +1364,7 @@ __VIEWER_MAP_OPTIONS_SCRIPT__
       const collapsed = !explorerBody.hidden;
       explorerBody.hidden = collapsed;
       explorerToggle.setAttribute("aria-expanded", String(!collapsed));
-      explorerToggle.textContent = collapsed ? "탐색창 펼치기 ▾" : "탐색창 접기 ▴";
+      explorerToggle.textContent = collapsed ? "Expand ▾" : "Collapse ▴";
       // Keep all input/result state; only recalculate the newly available view area.
       scheduleStableRelayout();
     });
@@ -1751,7 +1821,7 @@ __VIEWER_MAP_OPTIONS_SCRIPT__
       const collapsed = routeGuidancePanel.dataset.collapsed === "true";
       routeGuidancePanel.dataset.collapsed = collapsed ? "false" : "true";
       routeGuidanceToggle.textContent = collapsed ? "−" : "+";
-      const label = collapsed ? "경로 안내 접기" : "경로 안내 펼치기";
+      const label = collapsed ? "Collapse directions" : "Expand directions";
       routeGuidanceToggle.title = label;
       routeGuidanceToggle.setAttribute("aria-label", label);
     });
@@ -1770,8 +1840,8 @@ __VIEWER_MAP_OPTIONS_SCRIPT__
       }
       routeGuidancePanel.dataset.collapsed = "false";
       routeGuidanceToggle.textContent = "−";
-      routeGuidanceToggle.title = "경로 안내 접기";
-      routeGuidanceToggle.setAttribute("aria-label", "경로 안내 접기");
+      routeGuidanceToggle.title = "Collapse directions";
+      routeGuidanceToggle.setAttribute("aria-label", "Collapse directions");
       activateRoutePanelTab("history");
       routeGuidancePanel.scrollIntoView({ block: "nearest" });
       setStatus(historyController.count ? "경로 이력을 열었습니다." : "경로 이력을 확인하고 있습니다.");

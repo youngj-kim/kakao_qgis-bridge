@@ -1,5 +1,7 @@
 # 변경 기록과 릴리즈 노트
 
+[English release notes](docs/release-notes.en.md)
+
 현재 릴리즈 노트를 아래에서 관리합니다. 이전 버전 항목은 당시 기록이며 현재 배포 상태는 [배포 체크리스트](docs/release-checklist.md)를 참고하세요.
 
 ## 1.3 — 2026-10-23

@@ -1,5 +1,7 @@
 # 사용 가이드 — 1.3
 
+[English setup and usage guide](guide.en.md)
+
 설치와 키 등록은 [설정 가이드](setup.md), 버전별 변경은 [릴리즈 노트](../CHANGELOG.md)를 참고하세요.
 
 ## 탐색창과 언어

@@ -1,5 +1,7 @@
 # 설치와 API 키 설정
 
+[English setup and usage guide](guide.en.md)
+
 QGIS 플러그인 관리자의 **ZIP에서 설치**로 설치하고 QGIS를 다시 시작한 뒤 Kakao QGIS Bridge를 활성화합니다. 기존 외부 브라우저 탭은 닫고 플러그인 버튼으로 새 창을 여세요.
 
 ## Kakao API 키 설정

@@ -4,7 +4,7 @@
 
 Synchronize QGIS with Kakao Map and Roadview, including map position and zoom. The viewer runs in a dock when Qt WebEngine/WebChannel is available and in an external browser otherwise.
 
-**Released version: 1.3 (2026-10-23).** The [English release notes](docs/release-notes.en.md) also document the separate 1.3.1 development candidate, whose manual QGIS verification is pending.
+**Released version: 1.3 (2026-10-23).** The [English release notes](docs/release-notes.en.md) also document the separate 1.3.1 development candidate, whose independent panel-collapse behavior was confirmed by the user on October 27, 2026.
 
 ## Install and start
 
@@ -42,7 +42,7 @@ API keys are stored unencrypted in QGIS settings. External browser session token
 - [Setup and usage (English)](docs/guide.en.md)
 - [Release notes (English)](docs/release-notes.en.md)
 - [Full changelog (Korean)](CHANGELOG.md)
-- [Illustrated usage guide (Korean)](docs/usage.md)
+- [Illustrated usage guide](docs/usage.md)
 - [Development and tests (Korean)](docs/development.md)
 - [Release checklist (Korean)](docs/release-checklist.md)
 

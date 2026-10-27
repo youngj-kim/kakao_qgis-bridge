@@ -1,6 +1,6 @@
 # Setup and usage
 
-[English README](../README.en.md) · [한국어 설정](setup.md) · [한국어 사용 가이드](usage.md)
+[English README](../README.en.md) · [한국어 설정](setup.md) · [Illustrated usage guide](usage.md)
 
 This guide describes released version 1.3 and explicitly identifies changes in the 1.3.1 development candidate.
 

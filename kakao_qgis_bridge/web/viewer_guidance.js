@@ -147,8 +147,9 @@ window.createKakaoGuidanceController = function createKakaoGuidanceController({
       routeGuidanceSummaryText.dataset.guidanceSummary = summaryParts.join(" · ");
       routeGuidancePanel.dataset.collapsed = "false";
       routeGuidanceToggle.textContent = "−";
-      routeGuidanceToggle.title = "Collapse directions";
-      routeGuidanceToggle.setAttribute("aria-label", "Collapse directions");
+      routeGuidanceToggle.setAttribute("aria-expanded", "true");
+      routeGuidanceToggle.title = "Collapse directions / history";
+      routeGuidanceToggle.setAttribute("aria-label", "Collapse directions / history");
 
       guides.forEach((guide) => {
         const item = document.createElement("button");

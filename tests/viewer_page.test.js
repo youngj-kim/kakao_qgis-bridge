@@ -81,7 +81,7 @@ for (const mode of ["external", "dock"]) {
     assert.equal(style["--split-primary-weight"], "70fr");
     assert.equal(style["--split-secondary-weight"], "30fr");
   });
-  test(mode + " explorer collapses the whole panel without clearing inputs or results", () => {
+  test(mode + " explorer collapses inputs while guidance and history retain independent collapse state", () => {
     const h = harness(mode);
     const body = h.node("explorer-body"), toggle = h.node("explorer-toggle");
     h.node("route-origin-input").value = "서울역";
@@ -101,11 +101,25 @@ for (const mode of ["external", "dock"]) {
     assert.equal(toggle.attributes["aria-expanded"], "false");
     assert.match(toggle.textContent, /Expand/);
     assert.equal(relayoutRequests, 4);
+    const panel = h.node("route-guidance-panel"), panelToggle = h.node("route-guidance-toggle");
+    assert.equal(panel.hidden, false, "Guidance remains available with explorer collapsed");
+    panelToggle.fire("click");
+    assert.equal(panel.dataset.collapsed, "true");
+    assert.equal(panelToggle.attributes["aria-expanded"], "false");
+    assert.equal(body.hidden, true);
+    h.node("route-history-tab").fire("click");
+    assert.equal(h.node("route-history-list").hidden, false);
+    assert.equal(panel.dataset.collapsed, "true", "Tab switching preserves collapse choice");
+    panelToggle.fire("click");
+    assert.equal(panel.dataset.collapsed, "false");
+    assert.equal(panelToggle.attributes["aria-expanded"], "true");
+    assert.equal(body.hidden, true);
+    const beforeExpand = relayoutRequests;
     toggle.fire("click");
     assert.equal(body.hidden, false);
     assert.equal(toggle.attributes["aria-expanded"], "true");
     assert.match(toggle.textContent, /Collapse/);
-    assert.equal(relayoutRequests, 8);
+    assert.equal(relayoutRequests, beforeExpand + 4);
     assert.equal(h.node("route-origin-input").value, "서울역");
     assert.equal(h.node("route-destination-input").value, "수원역");
     assert.equal(h.node("search-query").value, "서울");

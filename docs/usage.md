@@ -1,163 +1,147 @@
-# 사용 가이드 — 1.3
+# Illustrated usage guide — 1.3
 
-[English setup and usage guide](guide.en.md)
+[English README](../README.en.md) · [Setup and API keys](guide.en.md) · [Release notes](release-notes.en.md)
 
-설치와 키 등록은 [설정 가이드](setup.md), 버전별 변경은 [릴리즈 노트](../CHANGELOG.md)를 참고하세요.
+The screenshots retain their original Korean UI. English control names are used below, with Korean labels included where useful for matching the screenshots. This guide covers version 1.3 and identifies the updated panel behavior in the 1.3.1 development candidate.
 
-## 탐색창과 언어
+## Explorer panel and language
 
-상단은 **탐색창 접기/펼치기 → 배치 선택 → EN/KR → 전체화면** 순서입니다. 검색과 경로 옵션을 적은 줄로 묶어 지도 공간을 확보했습니다. 좁은 창에서는 일부 버튼이 다음 줄로 이동합니다.
+The top toolbar contains **Collapse/Expand → Layout → EN/KR → Fullscreen**. Search and route controls are grouped into fewer rows to leave more room for the map. Some controls wrap onto another row in narrow windows.
 
-**EN**은 영어로, **KR**은 한국어로 전환하고 선택을 뷰어 저장소에 보관합니다. 내장 뷰어와 외부 브라우저는 언어를 각각 선택할 수 있습니다. 저장소를 사용할 수 없으면 현재 화면에서만 전환됩니다.
+Click **EN** to switch to English or **KR** to switch to Korean. The viewer saves your language preference in local storage. The embedded viewer and external browser may require separate selections. If storage is unavailable, the selection applies only to the current page.
 
-주요 버튼·지도 종류·경로 유형·입력 안내·옵션 라벨을 전환합니다. SDK 지도 지명, QGIS 메뉴·대화상자 및 일부 상태 메시지는 전환 대상이 아닙니다. **현위치 / Here**는 GPS 위치가 아니라 **현재 카카오 지도 중심**을 입력합니다.
+Translation covers main buttons, map types, route priorities, input hints, and option labels. SDK map labels, QGIS menus/dialogs, and some status messages remain unchanged. **Here (현위치)** uses the **current Kakao map center**, not your GPS location.
 
-탐색창을 접어도 입력·검색 결과는 유지되고 배치·언어·전체화면은 상단에 남습니다. 분리 도크는 화면에 맞춘 초기 크기를 사용하고 이후 사용자 조절 크기를 유지합니다.
+Collapsing the explorer preserves inputs and search results. Layout, language, and fullscreen controls remain accessible. In the **1.3.1 development candidate**, collapsing the explorer hides only search, map settings, and route inputs. Directions and history remain visible when results are available. Use **−** on that panel to hide its list while retaining the tabs and summary, and **+** to expand it. The two panels collapse independently. The user confirmed this behavior on October 27, 2026.
 
+A newly detached dock starts at a size that fits the screen and subsequently retains user-adjusted dimensions.
 
+![Korean overview with QGIS synchronization](screenshots/v1.3/01-korean-overview.png)
 
-![한국어 기본 화면과 QGIS 연동](screenshots/v1.3/01-korean-overview.png)
+![English UI with KR and Here buttons](screenshots/v1.3/02-english-overview.png)
 
+### Layout, splitter, and fullscreen
 
-![영어 UI와 KR·Here 버튼](screenshots/v1.3/02-english-overview.png)
+Choose a layout to place the map and Roadview above/below or beside each other. Drag the splitter to resize the two areas. The button in the middle swaps their positions. The top **⛶** button switches fullscreen mode: dock fullscreen in the embedded viewer, or browser fullscreen in external mode.
 
-### 배치·분할선·전체화면
+![Roadview and map arranged side by side](screenshots/v1.3/03-side-by-side-layout.png)
 
-배치 선택으로 지도·로드뷰의 상하/좌우 위치를 바꿉니다. 가운데 분할선을 드래그하면 각 영역 크기를 조절하고 가운데 전환 버튼으로 두 영역 위치를 교환합니다. 상단 ⛶는 전체화면 전환입니다. 내장 뷰어는 도크 전체화면, 외부 연동은 브라우저 전체화면으로 표시합니다.
+![Map and Roadview resized using the splitter](screenshots/v1.3/04-resized-split.png)
 
+## Maps and search
 
-![로드뷰와 지도 좌우 배치](screenshots/v1.3/03-side-by-side-layout.png)
+Enter a place name or address in the search box and select a result to move QGIS, the Kakao map, and Roadview to that location. Collapse and reopen the result list without losing results. A new search expands its results.
 
+Map types are **Roadmap (일반지도)**, **Aerial (항공영상)**, and **Aerial + labels (항공영상+지명)**. **Show Roadview roads (로드뷰 도로 표시)** toggles the road coverage overlay. These controls do not change the QGIS basemap.
 
-![분할선으로 지도와 로드뷰 크기 조절](screenshots/v1.3/04-resized-split.png)
+QGIS and Kakao Map synchronize panning and zooming in both directions. Zoom-only changes preserve the Roadview panorama position; dragging the map or moving inside Roadview updates the position. Kakao's discrete roadmap levels 1–14 and QGIS scale locking affect zoom matching. See the [zoom and Roadview policy (Korean)](zoom-roadview-policy.md).
 
-## 지도와 검색
+## Route inputs and directions
 
-검색창에 장소·주소를 입력하고 결과를 선택하면 QGIS와 지도·Roadview가 함께 이동합니다. 결과 목록은 접었다가 다시 열 수 있고 새 검색은 결과를 펼칩니다.
+1. Enter an address, place, or coordinates for the origin and destination. Both `longitude,latitude` and `latitude,longitude` are supported, for example `126.9786567,37.566826`.
+2. Use **Here (현위치)** to set a point to the map center, or select a search suggestion to confirm its location.
+3. Add up to five waypoints with **+ Waypoint (+ 경유지)**. Use the arrows to reorder waypoints or swap the origin and destination.
+4. Select **Recommended (추천 경로)**, **Fastest (최단 시간)**, or **Shortest (최단 거리)**, then configure avoidance and vehicle options if needed.
+5. Click **Create route (경로 생성)**. Enter your REST API key when prompted on first use.
 
-지도 종류는 **일반지도 / Roadmap**, **항공영상 / Aerial**, **항공영상+지명 / Aerial + labels**입니다. **로드뷰 도로 표시 / Show Roadview roads**는 촬영 도로 선을 켜고 끕니다. 이 설정은 QGIS 배경지도를 바꾸지 않습니다.
+QGIS displays the temporary layers `Kakao Mobility Route`, `Kakao Route Points`, and `Kakao Route Guidance`. Select a directions item to focus that point in QGIS and the viewer.
 
-QGIS와 카카오 지도는 이동·줌을 양방향 연동합니다. 줌만 하면 Roadview 촬영 위치를 유지하고 지도 드래그나 Roadview 내부 이동 시 위치를 갱신합니다. 카카오 일반지도 단계 1~14와 QGIS 축척 잠금의 영향을 받습니다. [줌·Roadview 정책](zoom-roadview-policy.md)을 참고하세요.
+Before routing, pins use the input locations. Result pins use the API guidance locations. Original input coordinates remain available for editing, rerouting, and history export. A waypoint result pin is omitted when the response has no corresponding guidance. Small origin/destination/waypoint symbols in the guidance layer are hidden to avoid overlapping the larger Route Points pins.
 
-## 경로 입력과 안내
+### Avoidance and vehicle options
 
-1. 출발·도착에 주소·장소 또는 좌표를 입력합니다. 좌표는 `경도,위도`와 `위도,경도`를 지원합니다. 예: `126.9786567,37.566826`.
-2. **현위치 / Here**로 지도 중심을 지정하거나 검색 후보를 선택해 위치를 확정합니다.
-3. **+ 경유지 / + Waypoint**로 최대 5개를 추가합니다. 화살표로 순서를 바꾸거나 출발·도착을 교환할 수 있습니다.
-4. **추천 경로 / Recommended**, **최단 시간 / Fastest**, **최단 거리 / Shortest**를 선택하고 필요하면 회피·차량 옵션을 설정합니다.
-5. **경로 생성 / Create route**를 누릅니다. 최초 실행 시 REST API 키를 등록합니다.
+Expand **Avoid (회피)** to select toll roads, motorways, ferries, school zones, and U-turns. Multiple selections are allowed. The button count shows the number selected; selecting toll roads and school zones, for example, displays **Avoid 2**.
 
-QGIS에 `Kakao Mobility Route`, `Kakao Route Points`, `Kakao Route Guidance` 임시 레이어가 표시됩니다. 안내 항목을 선택하면 해당 위치를 지도·Roadview와 QGIS에서 함께 확인할 수 있습니다.
+![Selected route avoidance options](screenshots/v1.3/05-avoid-options.png)
 
-탐색 전 핀은 입력 위치를, 결과 핀은 API 안내 위치를 사용합니다. 원래 입력 좌표는 편집·재검색·이력 저장용으로 유지합니다. 경유 안내가 없으면 해당 결과 핀을 생략합니다. 안내 레이어의 작은 출발·도착·경유 핀은 큰 Route Points 핀과 겹치지 않게 숨깁니다.
+Expand **Vehicle (차량)** to choose a vehicle class: small, medium, large, large truck, special truck, compact, or motorcycle. Set the fuel type to gasoline, diesel, or LPG, and select Hi-pass usage as applicable. Create the route again after changing options to apply them to a new request.
 
-### 회피·차량 옵션
+![Vehicle class, fuel, and Hi-pass settings](screenshots/v1.3/06-vehicle-options.png)
 
-회피를 펼치면 유료도로·자동차전용도로·페리·어린이보호구역·유턴을 복수 선택할 수 있습니다. 버튼의 숫자는 선택한 항목 수입니다. 예를 들어 유료도로와 어린이보호구역을 선택하면 회피 2로 표시됩니다.
+### Clear search versus reset route
 
+The **× beside the search box** clears the search query and results. The **× beside Create route** resets origin/destination/waypoint inputs and the currently displayed route. It does not delete saved session history.
 
-![회피 옵션 선택](screenshots/v1.3/05-avoid-options.png)
+![Route inputs and the reset button](screenshots/v1.3/07-before-route-reset.png)
 
-차량에서는 소형·중형·대형·대형 화물·특수 화물·경차·이륜차, 휘발유·경유·LPG와 하이패스 사용 여부를 지정합니다. 설정을 바꾼 뒤 경로를 다시 생성하면 새 요청에 반영합니다.
+![Empty inputs after resetting the route](screenshots/v1.3/08-after-route-reset.png)
 
+## History and export
 
-![차종 선택과 유종·하이패스 설정](screenshots/v1.3/06-vehicle-options.png)
+Generated routes accumulate in **History (이력)** for the current session. Selecting an item displays its result. **Load (불러오기)** restores its inputs and options. Individual deletion, deletion of all history, selected export, and individual export are available.
 
-### 검색 지우기와 경로 초기화
+![Session route history](screenshots/v1.3/09-history-overview.png)
 
-검색창 옆 ×는 검색어와 검색 결과를 지웁니다. 경로 생성 옆 ×는 출발·도착·경유 입력과 현재 경로 표시를 초기화합니다. 세션에 저장된 경로 이력을 삭제하는 버튼은 아닙니다.
+### Export selected history and load it again
 
+1. Select items using their checkboxes. **Select all / Deselect all (전체 선택 / 전체 해제)** changes the selection in one step.
+2. Click **Save selected (선택 저장)**, choose a format such as GeoPackage, and specify the output file. Use **Export (내보내기)** under an item to export just that route.
+3. After restarting QGIS, use **Load history (이력 불러오기)** or the plugin menu command **경로 이력 불러오기...** to select the saved file.
+4. Select a restored item to display its route and directions. Its **Load** action also restores origin, destination, waypoints, and options to the input controls.
 
-![경로 초기화 버튼과 입력값](screenshots/v1.3/07-before-route-reset.png)
+![Checkbox selection for exporting history](screenshots/v1.3/10-selected-history.png)
 
+![Selecting a history export format](screenshots/v1.3/11-export-format.png)
 
-![경로 초기화 후 빈 입력창](screenshots/v1.3/08-after-route-reset.png)
+![Restored route and ordered directions](screenshots/v1.3/12-restored-guidance.png)
 
-## 이력과 내보내기
+### Delete history
 
-생성한 경로는 현재 세션의 **이력 / History**에 누적됩니다. 항목 선택은 결과를 표시하고 **불러오기 / Load**는 입력과 옵션을 복원합니다. 개별·전체 삭제, 선택 저장과 개별 내보내기를 지원합니다.
+Click **Delete (삭제)** under an item to open a confirmation dialog showing its route name. **Yes (예)** removes that item from the current session; **No (아니요)** cancels. Deleting the currently active history item also clears its route and directions display.
 
+**Delete all (전체 삭제)** removes all session history after a separate confirmation. Checkboxes control selected export; the Delete action under an item targets that item. These actions do not delete files already exported to disk.
 
+![Confirmation before deleting a history item](screenshots/v1.3/17-history-delete-confirm.png)
 
-![세션 경로 이력 목록](screenshots/v1.3/09-history-overview.png)
+### Formats and session behavior
 
-### 선택 저장과 다시 불러오기
+The QGIS plugin menu can export the whole session to GeoPackage, GeoJSON, Shapefile, or GPX. GeoJSON and Shapefile exports include separate route/directions files and QML styles. If GPX QML files are in the same folder, use **GPX 스타일 적용해서 불러오기...** to load the layers with styles.
 
-1. 이력 목록의 체크박스로 저장할 항목을 고릅니다. 전체 선택/해제로 여러 항목을 한 번에 선택하거나 해제할 수 있습니다.
-2. **선택 저장**을 누르고 GeoPackage 등 저장 형식을 선택한 뒤 파일 경로를 지정합니다. 한 항목만 저장할 때는 항목 아래 **내보내기**도 사용할 수 있습니다.
-3. 다시 실행한 QGIS에서는 **이력 불러오기** 버튼 또는 플러그인 메뉴의 **경로 이력 불러오기...**로 저장한 파일을 선택합니다.
-4. 복원된 이력 항목을 선택하면 경로·안내를 표시합니다. 항목의 **불러오기**는 출발·도착·경유와 옵션을 입력창에도 복원합니다.
+History is not saved automatically. Saving again to the same GeoPackage skips existing `history_id` values and appends new history. GeoPackage, GeoJSON, and Shapefile can be imported as history; GPX is loaded as map layers. Imports must pass whole-file checks for CRS, schema, relationships, and conflicting records. See [export validation and format limitations (Korean)](export-validation.md).
 
+Changing the QGIS project resets current displays, inputs, and pending requests, but retains session history. Select a history item to display it in the new project.
 
-![체크박스로 이력을 선택한 상태](screenshots/v1.3/10-selected-history.png)
+## Compare GPKG routes and fares
 
+Use **GPKG 경로 비교...** to open Kakao and Naver route files as A and B. Compare distance, estimated duration, query time, and B−A differences. Display both routes as a blue solid line and an orange dashed line. Original files are not modified.
 
-![선택 이력 내보내기 형식 선택](screenshots/v1.3/11-export-format.png)
+Origin, destination, and waypoints in visit order are compared using a 20 m tolerance. Matching locations do not establish matching traffic, vehicle, or avoidance conditions. Only stored toll and estimated taxi fare values are compared; missing values are shown as unavailable. See [route comparison (Korean)](route-comparison.md) and [fare comparison (Korean)](fare-comparison.md).
 
+### Compare two routes
 
-![저장된 경로와 순서별 안내 표시](screenshots/v1.3/12-restored-guidance.png)
+1. In **GPKG 경로 비교...**, use **GPKG 열기...** for A and B to open each file.
+2. Select a route from each file and check its origin/destination/waypoints, query time, distance, and duration.
+3. Click **두 경로 지도에 표시** to display A as a blue solid line and B as an orange dashed line. Use **비교 표시 지우기** to remove the temporary comparison display.
 
-### 이력 삭제
+![Comparison dialog with A and B routes selected](screenshots/v1.3/13-route-comparison.png)
 
-항목 아래 **삭제**를 누르면 해당 경로 이름을 보여주는 확인창이 열립니다. **예**를 누르면 현재 세션에서 해당 이력을 제거하고, **아니요**는 취소합니다. 현재 표시 중인 이력을 삭제하면 경로·안내 표시도 정리합니다.
+![Both comparison routes displayed in QGIS](screenshots/v1.3/14-compared-routes.png)
 
-**전체 삭제**는 별도 확인 후 현재 세션의 모든 이력을 제거합니다. 체크박스는 선택 저장에 사용하며, 항목 아래 삭제는 그 항목을 대상으로 합니다. 이미 내보낸 원본 파일은 이 동작으로 삭제하지 않습니다.
+### Read fares and differences
 
+Differences are calculated as **B−A**. Positive means B is larger; negative means B is smaller. In the screenshot, tolls are KRW 3,000 for A and KRW 2,900 for B, so B is KRW 100 lower. Estimated taxi fares are KRW 76,900 for A and KRW 75,580 for B, so B is KRW 1,320 lower. These are the captured query results, not a guarantee of current fares or actual charges.
 
-![선택한 경로 이력 삭제 확인창](screenshots/v1.3/17-history-delete-confirm.png)
+Older history without fares is shown as unavailable, distinct from zero. Query a new route and export it to a separate file to obtain stored fare values. Do not add tolls to the estimated taxi fare.
 
-QGIS 메뉴에서 전체 세션을 GeoPackage, GeoJSON, Shapefile, GPX로 내보낼 수 있습니다. GeoJSON·Shapefile에는 경로·안내 파일과 QML 스타일이 생성됩니다. GPX의 QML이 같은 폴더에 있으면 **GPX 스타일 적용해서 불러오기...**를 사용하세요.
+![Toll and estimated taxi fare amounts and B−A differences](screenshots/v1.3/15-fare-comparison.png)
 
-이력은 자동 저장되지 않습니다. 같은 GeoPackage에 다시 저장하면 기존 `history_id`는 건너뛰고 새 이력을 추가합니다. GeoPackage·GeoJSON·Shapefile은 이력으로 다시 불러오고 GPX는 레이어로 불러옵니다. 파일 전체의 좌표계·스키마·연결·충돌 검증을 통과해야 이력에 반영됩니다. [내보내기 검증과 형식 제한](export-validation.md)을 참고하세요.
+## External browser and historical imagery
 
-프로젝트를 바꾸면 현재 표시·입력·진행 중 요청은 초기화되지만 세션 이력은 유지됩니다. 이력을 선택하면 새 프로젝트에 다시 표시합니다.
+If WebEngine/WebChannel is unavailable, use **외부 연동 창 열기**. The footer button also opens an external browser from the embedded viewer. The server tries port 8081 first, then 8082 if it is occupied. Register both origins as JavaScript SDK domains.
 
-## GPKG 경로와 요금 비교
+Close tabs from older sessions and open a fresh viewer using the plugin button. **Historical imagery in Kakao Map (카카오맵에서 과거 촬영 선택)** opens the official Kakao Map Roadview service. The plugin API does not provide a list of historical panoramas.
 
-**GPKG 경로 비교...**에서 카카오·네이버 파일을 A/B로 열어 경로를 선택합니다. 거리·예측 시간·조회 시점과 B−A 차이를 확인하고 두 경로를 파랑 실선/주황 점선으로 표시합니다. 원본 파일은 수정하지 않습니다.
+![QGIS and an external browser displaying the same route](screenshots/v1.3/16-external-browser.png)
 
-출발·도착과 방문 순서별 경유지를 20m 기준으로 비교합니다. 위치 일치는 교통 상황·차량·회피 조건 일치를 뜻하지 않습니다. 통행료와 예상 택시요금은 저장된 값만 비교하며 누락은 정보 없음으로 표시합니다. [경로 비교](route-comparison.md)와 [요금 비교](fare-comparison.md)를 참고하세요.
+## Troubleshooting connections
 
-### 비교 절차
+- If the map does not load, check the JavaScript key and registered SDK domains. Unless you changed the embedded viewer's base URL, register both localhost:8081 and localhost:8082.
+- If the map loads but routing fails, check the REST API key, routing service permissions, and the displayed error.
+- If an old external tab reports a connection error, close it and open a new viewer from the current QGIS session.
+- If both bridge ports are occupied, close unused QGIS integrations and try again.
 
-1. **GPKG 경로 비교...**에서 경로 A와 B의 **GPKG 열기...**로 파일을 각각 선택합니다.
-2. 각 파일의 경로를 선택하고 출발·도착·경유 조건, 조회 시점과 거리·시간을 확인합니다.
-3. **두 경로 지도에 표시**로 A의 파랑 실선과 B의 주황 점선을 비교합니다. **비교 표시 지우기**로 임시 비교 표시를 제거합니다.
+See [setup and API keys](guide.en.md) for details. There is no need to change working keys or domains just to reproduce an error screenshot.
 
+## About the screenshots
 
-![A/B 파일과 경로를 선택한 비교창](screenshots/v1.3/13-route-comparison.png)
-
-
-![QGIS에 표시한 두 비교 경로](screenshots/v1.3/14-compared-routes.png)
-
-### 요금과 차액 읽기
-
-차액은 **B−A**입니다. 양수이면 B가 더 크고 음수이면 B가 더 작습니다. 예시 화면에서 통행료는 A 3,000원, B 2,900원으로 B가 100원 적고, 예상 택시요금은 A 76,900원, B 75,580원으로 B가 1,320원 적습니다. 이는 캡처의 조회 결과이며 현재 요금이나 실제 청구액을 보장하지 않습니다.
-
-요금 없는 기존 이력은 정보 없음으로 표시하며 0원과 구분합니다. 요금을 얻으려면 새 경로를 조회해 별도 파일로 저장하세요. 통행료와 예상 택시요금은 합산하지 않습니다.
-
-
-![통행료·예상 택시요금과 B−A 차액](screenshots/v1.3/15-fare-comparison.png)
-
-## 외부 브라우저와 과거 촬영
-
-WebEngine/WebChannel이 없으면 **외부 연동 창 열기**를 사용합니다. 내장 뷰어에서도 하단 외부 연동 버튼으로 브라우저를 열 수 있습니다. 서버는 8081을 우선 사용하고 사용 중이면 8082를 사용합니다. SDK 도메인에 두 주소를 모두 등록하세요.
-
-이전 세션의 탭은 닫고 플러그인 버튼으로 새 창을 여세요. **카카오맵에서 과거 촬영 선택**은 공식 카카오맵 Roadview를 엽니다. 플러그인 API에서 과거 촬영 목록을 제공하지는 않습니다.
-
-
-
-![QGIS와 별도 브라우저의 경로 연동](screenshots/v1.3/16-external-browser.png)
-
-## 연결 문제 해결
-
-- 지도가 표시되지 않으면 플러그인의 JavaScript 키 설정과 실제 SDK 도메인을 확인합니다. 내장 뷰어 기준 URL을 별도로 바꾸지 않았다면 localhost:8081과 localhost:8082를 등록합니다.
-- 지도는 열리지만 경로 생성이 안 되면 REST API 키와 경로 서비스 권한, 오류 메시지를 확인합니다.
-- 오래된 외부 탭에서 연결 오류가 나면 탭을 닫고 현재 QGIS의 외부 연동 버튼으로 다시 엽니다.
-- 두 브리지 포트가 모두 사용 중이면 사용하지 않는 QGIS의 연동을 종료한 뒤 다시 엽니다.
-
-자세한 설정은 [설치·키 설정](setup.md)을 참고하세요. 오류 화면 재현을 위해 사용 중인 키나 도메인을 바꿀 필요는 없습니다.
-
-## 화면 자료
-
-본문은 사용자가 제공한 2026-10-23의 1.3 캡처를 사용합니다. 창 크기와 배치에 따라 버튼 위치가 다를 수 있습니다. [전체 스크린샷 목록](screenshots/README.md)에서 최신 자료와 이전 자료를 구분합니다.
+The guide uses the original version 1.3 screenshots provided on October 23, 2026. Their Korean text is intentionally retained. Control placement varies with window size and layout, and the independent collapse behavior added in 1.3.1 may differ from these screenshots. The [screenshot inventory (Korean)](screenshots/README.md) separates current and older images.

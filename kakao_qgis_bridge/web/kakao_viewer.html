@@ -1165,20 +1165,21 @@
           <button id="route-reset" type="button" title="Reset route" aria-label="Reset route" disabled>×</button>
         </div>
       </div>
-      <section id="route-guidance-panel" aria-label="경로 안내" data-collapsed="false" hidden>
+
+      <div id="search-results" role="listbox" aria-label="검색 결과" hidden></div>
+      </div>
+      <section id="route-guidance-panel" aria-label="안내 및 이력" data-collapsed="false" hidden>
         <div id="route-guidance-summary">
           <div id="route-panel-tabs" role="tablist" aria-label="경로 정보">
             <button id="route-guidance-tab" class="route-panel-tab is-active" type="button" role="tab" aria-selected="true">Directions</button>
             <button id="route-history-tab" class="route-panel-tab" type="button" role="tab" aria-selected="false">History</button>
           </div>
           <strong id="route-guidance-summary-text"></strong>
-          <button id="route-guidance-toggle" type="button" title="Collapse directions" aria-label="Collapse directions">−</button>
+          <button id="route-guidance-toggle" type="button" aria-expanded="true" aria-controls="route-guidance-list route-history-list route-guidance-overview" title="Collapse directions / history" aria-label="Collapse directions / history">−</button>
         </div>
         <div id="route-guidance-list" role="listbox" aria-label="순서별 경로 안내"></div>
         <div id="route-history-list" role="listbox" aria-label="경로 이력" hidden></div>
       </section>
-      <div id="search-results" role="listbox" aria-label="검색 결과" hidden></div>
-      </div>
     </header>
     <section id="map" aria-label="Kakao map"></section>
     <div id="view-splitter" role="separator" aria-label="지도와 로드뷰 크기 조절" aria-orientation="horizontal">
@@ -1821,9 +1822,11 @@ __VIEWER_LANGUAGE_SCRIPT__
       const collapsed = routeGuidancePanel.dataset.collapsed === "true";
       routeGuidancePanel.dataset.collapsed = collapsed ? "false" : "true";
       routeGuidanceToggle.textContent = collapsed ? "−" : "+";
-      const label = collapsed ? "Collapse directions" : "Expand directions";
+      routeGuidanceToggle.setAttribute("aria-expanded", String(collapsed));
+      const label = collapsed ? "Collapse directions / history" : "Expand directions / history";
       routeGuidanceToggle.title = label;
       routeGuidanceToggle.setAttribute("aria-label", label);
+      scheduleStableRelayout();
     });
 
     routeGuidanceTab.addEventListener("click", () => {
@@ -1840,8 +1843,9 @@ __VIEWER_LANGUAGE_SCRIPT__
       }
       routeGuidancePanel.dataset.collapsed = "false";
       routeGuidanceToggle.textContent = "−";
-      routeGuidanceToggle.title = "Collapse directions";
-      routeGuidanceToggle.setAttribute("aria-label", "Collapse directions");
+      routeGuidanceToggle.setAttribute("aria-expanded", "true");
+      routeGuidanceToggle.title = "Collapse directions / history";
+      routeGuidanceToggle.setAttribute("aria-label", "Collapse directions / history");
       activateRoutePanelTab("history");
       routeGuidancePanel.scrollIntoView({ block: "nearest" });
       setStatus(historyController.count ? "경로 이력을 열었습니다." : "경로 이력을 확인하고 있습니다.");

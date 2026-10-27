@@ -9,7 +9,7 @@ These notes summarize the current release and development candidate. Earlier rel
 - Keep directions and history visible when collapsing explorer search, map settings, and route inputs.
 - Collapse or expand the directions/history list independently while retaining its tabs and summary.
 - Improve bilingual toggle tooltips, accessibility state, and map/Roadview resizing after collapse changes.
-- Recorded verification: 55 viewer JavaScript tests, 2 Python viewer template/structure tests, and JavaScript syntax checks passed. Manual verification in QGIS is pending.
+- Recorded verification: 55 viewer JavaScript tests, 2 Python viewer template/structure tests, and JavaScript syntax checks passed. The user confirmed the independent explorer and directions/history collapse functionality on 2026-10-27.
 
 ## 1.3 — 2026-10-23
 

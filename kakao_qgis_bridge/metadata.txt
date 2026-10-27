@@ -3,10 +3,23 @@ name=Kakao QGIS Bridge
 qgisMinimumVersion=3.34
 qgisMaximumVersion=4.99
 description=Kakao Map and Roadview viewer with bidirectional QGIS synchronization and Local search; dock or external browser depending on the QGIS runtime.
-version=1.3
-changelog=1.3
-    - User confirmed functionality in QGIS 3.44 and rechecked existing functionality in QGIS 4 (2026-10-23).
-    - Added English/Korean button switching in the viewer, with saved language preference and dynamic button updates.
+version=1.3.1
+changelog=1.3.1
+    - Keep directions and history visible when collapsing the explorer inputs.
+    - Collapse or expand the directions/history list independently while retaining its tabs and summary.
+    - Update bilingual toggle labels, accessibility state and map/Roadview resizing.
+    - Passed 55 viewer JavaScript tests, 2 viewer template tests and JavaScript syntax checks; the user confirmed the updated UI functionality on 2026-10-27.
+    1.3
+    - Added English/Korean switching for viewer controls, with saved language preference.
+    - Reduced explorer panel height by grouping layout, language, fullscreen and route controls.
+    - Shortened the map-center button label to Here (English) and 현위치 (Korean).
+    - Added map type switching and a Roadview road coverage toggle.
+    - Improved floating/docked window size restoration and viewer resizing.
+    - Added collapsible explorer and search results panels while preserving inputs and results.
+    - Added toll and estimated taxi fare storage and A/B fare comparison for GPKG route histories.
+    - Updated documentation with 17 screenshots and history export, restoration and deletion instructions.
+    - User confirmed functionality in QGIS 3.44 and rechecked existing functionality in QGIS 4.
+    - Passed 81 Python tests, 64 JavaScript tests and Bandit security checks.
     1.2.2
     - Restore floating/docked sizes separately and refresh viewer layout after dock transitions without reloading the page.
     - Improved initial floating dock size within screen bounds and split map/Roadview using the remaining vertical space.

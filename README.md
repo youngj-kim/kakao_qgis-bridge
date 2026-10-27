@@ -1,5 +1,7 @@
 # Kakao QGIS Bridge
 
+[한국어](README.md) · [English](README.en.md)
+
 QGIS와 Kakao Map·Roadview의 위치와 확대 수준을 연동합니다. Qt WebEngine/WebChannel이 있으면 도크 안에서, 없으면 외부 브라우저에서 실행합니다.
 
 **현재 버전: 1.3** · [1.3 릴리즈 노트](CHANGELOG.md#13--2026-10-23) · [사용 가이드](docs/usage.md)
